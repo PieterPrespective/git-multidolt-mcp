@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.Reflection;
 using DMMS.Logging;
 using DMMS.Models;
+using DMMS.Services;
 using DMMS.Tools;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -24,10 +25,24 @@ if (enableLogging)
 
 builder.Services.Configure<ServerConfiguration>(options => ConfigurationUtility.GetServerConfiguration(options));
 
+// Register both implementations
+builder.Services.AddSingleton<ChromaDbService>();
+
+// Register the appropriate service based on configuration
+builder.Services.AddSingleton<IChromaDbService>(serviceProvider =>
+    ChromaDbServiceFactory.CreateService(serviceProvider));
+
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithTools<GetServerVersionTool>();
+    .WithTools<GetServerVersionTool>()
+    .WithTools<ChromaListCollectionsTool>()
+    .WithTools<ChromaCreateCollectionTool>()
+    .WithTools<ChromaDeleteCollectionTool>()
+    .WithTools<ChromaAddDocumentsTool>()
+    .WithTools<ChromaQueryDocumentsTool>()
+    .WithTools<ChromaGetCollectionCountTool>()
+    .WithTools<ChromaDeleteDocumentsTool>();
 
 var host = builder.Build();
 
@@ -60,6 +75,11 @@ public static class ConfigurationUtility
         options.BufferSize = int.TryParse(Environment.GetEnvironmentVariable("BUFFER_SIZE"), out var bufferSize) ? bufferSize : 16 * 1024 * 1024;
         options.MaxRetries = int.TryParse(Environment.GetEnvironmentVariable("MAX_RETRIES"), out var retries) ? retries : 3;
         options.RetryDelaySeconds = double.TryParse(Environment.GetEnvironmentVariable("RETRY_DELAY"), out var delay) ? delay : 1.0;
+        options.ChromaHost = Environment.GetEnvironmentVariable("CHROMA_HOST") ?? "localhost";
+        options.ChromaPort = int.TryParse(Environment.GetEnvironmentVariable("CHROMA_PORT"), out var chromaPort) ? chromaPort : 8000;
+        options.ChromaMode = Environment.GetEnvironmentVariable("CHROMA_MODE") ?? "persistent";
+        options.ChromaDataPath = Environment.GetEnvironmentVariable("CHROMA_DATA_PATH") ?? "./chroma_data";
+        
         return options;
     }
 }

@@ -6,5 +6,9 @@
   href: claude-configuration.md
 - name: Basic Usage
   href: basic-usage.md
+- name: Chroma Tools Reference
+  href: chroma-tools-reference.md
+- name: Chroma Configuration
+  href: chroma-configuration.md
 - name: Troubleshooting
   href: troubleshooting.md

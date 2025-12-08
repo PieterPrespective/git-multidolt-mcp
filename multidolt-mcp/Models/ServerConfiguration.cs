@@ -29,4 +29,24 @@ public class ServerConfiguration
     /// Delay in seconds between retry attempts
     /// </summary>
     public double RetryDelaySeconds { get; set; } = 1.0;
+
+    /// <summary>
+    /// Host address for the Chroma database (used in server mode)
+    /// </summary>
+    public string ChromaHost { get; set; } = "localhost";
+
+    /// <summary>
+    /// Port for the Chroma database (used in server mode)
+    /// </summary>
+    public int ChromaPort { get; set; } = 8000;
+
+    /// <summary>
+    /// ChromaDB connection mode: "persistent" for local data directory, "server" for HTTP API
+    /// </summary>
+    public string ChromaMode { get; set; } = "persistent";
+
+    /// <summary>
+    /// Local data directory path for persistent ChromaDB client
+    /// </summary>
+    public string ChromaDataPath { get; set; } = "./chroma_data";
 }

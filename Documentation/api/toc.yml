@@ -23,10 +23,47 @@ items:
   - uid: DMMS.Models.ServerConfiguration
     name: ServerConfiguration
     type: Class
+- uid: DMMS.Services
+  name: DMMS.Services
+  type: Namespace
+  items:
+  - uid: DMMS.Services.ChromaDbService
+    name: ChromaDbService
+    type: Class
+  - uid: DMMS.Services.ChromaDbServiceFactory
+    name: ChromaDbServiceFactory
+    type: Class
+  - uid: DMMS.Services.ChromaPersistentDbService
+    name: ChromaPersistentDbService
+    type: Class
+  - uid: DMMS.Services.IChromaDbService
+    name: IChromaDbService
+    type: Interface
 - uid: DMMS.Tools
   name: DMMS.Tools
   type: Namespace
   items:
+  - uid: DMMS.Tools.ChromaAddDocumentsTool
+    name: ChromaAddDocumentsTool
+    type: Class
+  - uid: DMMS.Tools.ChromaCreateCollectionTool
+    name: ChromaCreateCollectionTool
+    type: Class
+  - uid: DMMS.Tools.ChromaDeleteCollectionTool
+    name: ChromaDeleteCollectionTool
+    type: Class
+  - uid: DMMS.Tools.ChromaDeleteDocumentsTool
+    name: ChromaDeleteDocumentsTool
+    type: Class
+  - uid: DMMS.Tools.ChromaGetCollectionCountTool
+    name: ChromaGetCollectionCountTool
+    type: Class
+  - uid: DMMS.Tools.ChromaListCollectionsTool
+    name: ChromaListCollectionsTool
+    type: Class
+  - uid: DMMS.Tools.ChromaQueryDocumentsTool
+    name: ChromaQueryDocumentsTool
+    type: Class
   - uid: DMMS.Tools.GetServerVersionTool
     name: GetServerVersionTool
     type: Class
@@ -34,16 +71,32 @@ items:
   name: DMMSTesting.IntegrationTests
   type: Namespace
   items:
+  - uid: DMMSTesting.IntegrationTests.ChromaPersistentIntegrationTests
+    name: ChromaPersistentIntegrationTests
+    type: Class
   - uid: DMMSTesting.IntegrationTests.FileLoggingIntegrationTests
     name: FileLoggingIntegrationTests
     type: Class
   - uid: DMMSTesting.IntegrationTests.ServerIntegrationTests
     name: ServerIntegrationTests
     type: Class
+- uid: DMMSTesting.Services
+  name: DMMSTesting.Services
+  type: Namespace
+  items:
+  - uid: DMMSTesting.Services.ChromaDbServiceTests
+    name: ChromaDbServiceTests
+    type: Class
 - uid: DMMSTesting.Tools
   name: DMMSTesting.Tools
   type: Namespace
   items:
+  - uid: DMMSTesting.Tools.ChromaCreateCollectionToolTests
+    name: ChromaCreateCollectionToolTests
+    type: Class
+  - uid: DMMSTesting.Tools.ChromaListCollectionsToolTests
+    name: ChromaListCollectionsToolTests
+    type: Class
   - uid: DMMSTesting.Tools.GetServerVersionToolTests
     name: GetServerVersionToolTests
     type: Class

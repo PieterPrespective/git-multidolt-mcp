@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using DMMS.Models;
 using DMMS.Tools;
+using DMMSTesting.Utilities;
 
 namespace DMMSTesting.IntegrationTests;
 
@@ -35,7 +36,9 @@ public class ServerIntegrationTests
 
         _host = builder.Build();
         _serviceProvider = _host.Services;
-        await _host.StartAsync();
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _host.StartAsync(),
+            operationName: "Start host");
     }
 
     [TearDown]
@@ -43,7 +46,9 @@ public class ServerIntegrationTests
     {
         if (_host != null)
         {
-            await _host.StopAsync();
+            await TestUtilities.ExecuteWithTimeoutAsync(
+                _host.StopAsync(),
+                operationName: "Stop host");
             _host.Dispose();
         }
     }
@@ -67,7 +72,9 @@ public class ServerIntegrationTests
     {
         var tool = _serviceProvider!.GetRequiredService<GetServerVersionTool>();
         
-        var result = await tool.GetServerVersion();
+        var result = await TestUtilities.ExecuteWithTimeoutAsync(
+            tool.GetServerVersion(),
+            operationName: "Get server version");
         
         Assert.That(result, Is.Not.Null, "Tool should return a result");
         
@@ -83,7 +90,9 @@ public class ServerIntegrationTests
     {
         var tool = _serviceProvider!.GetRequiredService<GetServerVersionTool>();
         
-        var result = await tool.GetServerVersion();
+        var result = await TestUtilities.ExecuteWithTimeoutAsync(
+            tool.GetServerVersion(),
+            operationName: "Get server version for configuration test");
         
         dynamic dynamicResult = result;
         var version = dynamicResult.version;

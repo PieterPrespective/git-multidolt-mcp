@@ -28,6 +28,7 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.5" />
     <PackageReference Include="ModelContextProtocol" Version="0.1.0-preview.14" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="pythonnet" Version="3.0.5" />
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
     
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">

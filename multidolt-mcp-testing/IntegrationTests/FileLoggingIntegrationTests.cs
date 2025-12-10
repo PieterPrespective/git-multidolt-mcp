@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using DMMS.Logging;
 using DMMS.Models;
 using DMMS.Tools;
+using DMMSTesting.Utilities;
 
 namespace DMMSTesting.IntegrationTests;
 
@@ -21,6 +22,16 @@ public class FileLoggingIntegrationTests
     /// Reads the log file with proper file sharing to avoid lock conflicts
     /// </summary>
     private async Task<string> ReadLogFileAsync()
+    {
+        return await TestUtilities.ExecuteWithTimeoutAsync(
+            ReadLogFileInternalAsync(),
+            operationName: "Read log file");
+    }
+
+    /// <summary>
+    /// Internal method to read the log file without timeout wrapper
+    /// </summary>
+    private async Task<string> ReadLogFileInternalAsync()
     {
         if (string.IsNullOrEmpty(_testLogPath))
             return string.Empty;
@@ -77,7 +88,9 @@ public class FileLoggingIntegrationTests
 
         _host = builder.Build();
         _serviceProvider = _host.Services;
-        await _host.StartAsync();
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _host.StartAsync(),
+            operationName: "Start host for file logging test");
     }
 
     [TearDown]
@@ -85,7 +98,9 @@ public class FileLoggingIntegrationTests
     {
         if (_host != null)
         {
-            await _host.StopAsync();
+            await TestUtilities.ExecuteWithTimeoutAsync(
+                _host.StopAsync(),
+                operationName: "Stop host for file logging test");
             _host.Dispose();
             _host = null;
         }
@@ -211,7 +226,9 @@ public class FileLoggingIntegrationTests
     {
         var tool = _serviceProvider!.GetRequiredService<GetServerVersionTool>();
         
-        await tool.GetServerVersion();
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            tool.GetServerVersion(),
+            operationName: "Execute GetServerVersion for logging test");
         
         // Give time for async write to complete
         await Task.Delay(500);
@@ -270,7 +287,10 @@ public class FileLoggingIntegrationTests
             }));
         }
         
-        await Task.WhenAll(tasks);
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            Task.WhenAll(tasks),
+            timeoutSeconds: 30,
+            operationName: "Concurrent logging tasks");
         
         // Give time for all async writes to complete
         await Task.Delay(1000);

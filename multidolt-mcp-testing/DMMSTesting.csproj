@@ -28,6 +28,7 @@
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.5" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.5" />
+    <PackageReference Include="pythonnet" Version="3.0.5" />
   </ItemGroup>
 
   <ItemGroup>

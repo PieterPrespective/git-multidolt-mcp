@@ -28,7 +28,7 @@ public interface IChromaDbService
     /// <summary>
     /// Adds documents to a collection
     /// </summary>
-    Task<bool> AddDocumentsAsync(string collectionName, List<string> documents, List<string> ids, List<Dictionary<string, object>>? metadatas = null);
+    Task<bool> AddDocumentsAsync(string collectionName, List<string> documents, List<string> ids, List<Dictionary<string, object>>? metadatas = null, bool allowDuplicateIds = false);
 
     /// <summary>
     /// Queries documents in a collection

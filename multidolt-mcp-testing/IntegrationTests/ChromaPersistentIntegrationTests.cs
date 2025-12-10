@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using DMMS.Models;
 using DMMS.Services;
+using DMMSTesting.Utilities;
 
 namespace DMMSTesting.IntegrationTests;
 
@@ -43,12 +44,72 @@ public class ChromaPersistentIntegrationTests
     /// Cleans up test environment after each test
     /// </summary>
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
-        // Clean up test directory
-        if (Directory.Exists(_testDataPath))
+        // Explicitly clean up test data before disposal
+        if (_service != null)
         {
-            Directory.Delete(_testDataPath, recursive: true);
+            try
+            {
+                // Delete any collections created during tests
+                var collections = _service.ListCollectionsAsync().Result;
+                foreach (var collectionName in collections)
+                {
+                    try
+                    {
+                        _service.DeleteCollectionAsync(collectionName).Wait();
+                        Console.WriteLine($"Deleted test collection '{collectionName}'");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error deleting collection '{collectionName}': {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during test collection cleanup: {ex.Message}");
+            }
+        }
+        
+        // Dispose service (handles connections only)
+        _service?.Dispose();
+
+        // Wait briefly for file handles to be released after disposal
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        await Task.Delay(100);
+
+
+        //Thread.Sleep(100);
+
+        // Clean up test directory with retry logic
+        
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(_testDataPath))
+                {
+                    Directory.Delete(_testDataPath, recursive: true);
+                }
+
+                _logger?.LogInformation($"Succesfully cleared test chroma data in test directory: {_testDataPath}");
+
+                break; // Success
+            }
+            catch (IOException ex) when (attempt < 4)
+            {
+                // Wait and retry with exponential backoff
+                _logger?.LogWarning($"Attempt {attempt + 1} @ t={sw.ElapsedMilliseconds}ms to delete test directory failed: {ex.Message}. Retrying...");
+                await Task.Delay(100 * (int)Math.Pow(2, attempt));
+            }
+            catch (IOException ex) when (ex.Message.Contains("data_level0.bin") || ex.Message.Contains("chroma.sqlite3"))
+            {
+                // Known ChromaDB file locking issue - log but don't fail the test
+                Console.WriteLine($"Warning: ChromaDB file locking prevented directory cleanup: {ex.Message} after t={sw.ElapsedMilliseconds}ms");
+                Console.WriteLine($"This is a known limitation and does not affect test functionality. test directory: '{_testDataPath}'");
+                break; // Exit without throwing
+            }
         }
     }
 
@@ -59,14 +120,20 @@ public class ChromaPersistentIntegrationTests
     public async Task CreateAndListCollections_ShouldWork()
     {
         // Arrange & Act - Create collections
-        await _service.CreateCollectionAsync("test_collection_1");
-        await _service.CreateCollectionAsync("test_collection_2", new Dictionary<string, object>
-        {
-            { "description", "Test collection with metadata" },
-            { "version", 1 }
-        });
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("test_collection_1"), 
+            operationName: "Create collection 1");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("test_collection_2", new Dictionary<string, object>
+            {
+                { "description", "Test collection with metadata" },
+                { "version", 1 }
+            }),
+            operationName: "Create collection 2");
 
-        var collections = await _service.ListCollectionsAsync();
+        var collections = await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.ListCollectionsAsync(),
+            operationName: "List collections");
 
         // Assert
         Assert.That(collections, Is.Not.Null);
@@ -82,7 +149,9 @@ public class ChromaPersistentIntegrationTests
     public async Task AddAndQueryDocuments_ShouldWork()
     {
         // Arrange
-        await _service.CreateCollectionAsync("docs_collection");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("docs_collection"),
+            operationName: "Create docs collection");
         
         var documents = new List<string>
         {
@@ -99,10 +168,14 @@ public class ChromaPersistentIntegrationTests
         };
 
         // Act - Add documents
-        await _service.AddDocumentsAsync("docs_collection", documents, ids, metadatas);
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.AddDocumentsAsync("docs_collection", documents, ids, metadatas),
+            operationName: "Add documents");
 
         // Act - Query documents
-        var queryResult = await _service.QueryDocumentsAsync("docs_collection", new List<string> { "artificial intelligence" });
+        var queryResult = await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.QueryDocumentsAsync("docs_collection", new List<string> { "artificial intelligence" }),
+            operationName: "Query documents");
 
         // Assert
         Assert.That(queryResult, Is.Not.Null);
@@ -117,13 +190,19 @@ public class ChromaPersistentIntegrationTests
     public async Task GetCollectionCount_ShouldReturnCorrectCount()
     {
         // Arrange
-        await _service.CreateCollectionAsync("count_test");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("count_test"),
+            operationName: "Create count test collection");
         var documents = new List<string> { "Doc 1", "Doc 2", "Doc 3", "Doc 4", "Doc 5" };
         var ids = new List<string> { "1", "2", "3", "4", "5" };
 
         // Act
-        await _service.AddDocumentsAsync("count_test", documents, ids);
-        var count = await _service.GetCollectionCountAsync("count_test");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.AddDocumentsAsync("count_test", documents, ids),
+            operationName: "Add documents for count test");
+        var count = await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.GetCollectionCountAsync("count_test"),
+            operationName: "Get collection count");
 
         // Assert
         Assert.That(count, Is.EqualTo(5));
@@ -136,18 +215,26 @@ public class ChromaPersistentIntegrationTests
     public async Task UpdateDocuments_ShouldModifyExistingDocuments()
     {
         // Arrange
-        await _service.CreateCollectionAsync("update_test");
-        await _service.AddDocumentsAsync("update_test", 
-            new List<string> { "Original document" }, 
-            new List<string> { "doc1" });
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("update_test"),
+            operationName: "Create update test collection");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.AddDocumentsAsync("update_test", 
+                new List<string> { "Original document" }, 
+                new List<string> { "doc1" }),
+            operationName: "Add original document");
 
         // Act - Update document
-        await _service.UpdateDocumentsAsync("update_test", 
-            new List<string> { "doc1" }, 
-            new List<string> { "Updated document" });
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.UpdateDocumentsAsync("update_test", 
+                new List<string> { "doc1" }, 
+                new List<string> { "Updated document" }),
+            operationName: "Update document");
 
         // Act - Get updated document
-        var result = await _service.GetDocumentsAsync("update_test", new List<string> { "doc1" });
+        var result = await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.GetDocumentsAsync("update_test", new List<string> { "doc1" }),
+            operationName: "Get updated document");
 
         // Assert
         Assert.That(result, Is.Not.Null);
@@ -162,14 +249,22 @@ public class ChromaPersistentIntegrationTests
     public async Task DeleteDocuments_ShouldRemoveDocuments()
     {
         // Arrange
-        await _service.CreateCollectionAsync("delete_test");
-        await _service.AddDocumentsAsync("delete_test", 
-            new List<string> { "Doc 1", "Doc 2", "Doc 3" }, 
-            new List<string> { "1", "2", "3" });
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("delete_test"),
+            operationName: "Create delete test collection");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.AddDocumentsAsync("delete_test", 
+                new List<string> { "Doc 1", "Doc 2", "Doc 3" }, 
+                new List<string> { "1", "2", "3" }),
+            operationName: "Add documents for delete test");
 
         // Act - Delete one document
-        await _service.DeleteDocumentsAsync("delete_test", new List<string> { "2" });
-        var count = await _service.GetCollectionCountAsync("delete_test");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.DeleteDocumentsAsync("delete_test", new List<string> { "2" }),
+            operationName: "Delete document");
+        var count = await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.GetCollectionCountAsync("delete_test"),
+            operationName: "Get count after deletion");
 
         // Assert
         Assert.That(count, Is.EqualTo(2));
@@ -182,12 +277,20 @@ public class ChromaPersistentIntegrationTests
     public async Task DeleteCollection_ShouldRemoveCollection()
     {
         // Arrange
-        await _service.CreateCollectionAsync("to_delete");
-        var initialCollections = await _service.ListCollectionsAsync();
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("to_delete"),
+            operationName: "Create collection to delete");
+        var initialCollections = await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.ListCollectionsAsync(),
+            operationName: "List initial collections");
 
         // Act
-        await _service.DeleteCollectionAsync("to_delete");
-        var finalCollections = await _service.ListCollectionsAsync();
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.DeleteCollectionAsync("to_delete"),
+            operationName: "Delete collection");
+        var finalCollections = await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.ListCollectionsAsync(),
+            operationName: "List collections after deletion");
 
         // Assert
         Assert.That(initialCollections, Does.Contain("to_delete"));
@@ -202,8 +305,10 @@ public class ChromaPersistentIntegrationTests
     public void GetNonExistentCollection_ShouldThrowException()
     {
         // Act & Assert
-        Assert.ThrowsAsync<InvalidOperationException>(async () => 
-            await _service.GetCollectionAsync("non_existent"));
+        Assert.ThrowsAsync<Python.Runtime.PythonException>(async () => 
+            await TestUtilities.ExecuteWithTimeoutAsync(
+                _service.GetCollectionAsync("non_existent"),
+                operationName: "Get non-existent collection"));
     }
 
     /// <summary>
@@ -213,11 +318,15 @@ public class ChromaPersistentIntegrationTests
     public async Task CreateDuplicateCollection_ShouldThrowException()
     {
         // Arrange
-        await _service.CreateCollectionAsync("duplicate_test");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("duplicate_test"),
+            operationName: "Create original collection");
 
         // Act & Assert
-        Assert.ThrowsAsync<InvalidOperationException>(async () => 
-            await _service.CreateCollectionAsync("duplicate_test"));
+        Assert.ThrowsAsync<Python.Runtime.PythonException>(async () => 
+            await TestUtilities.ExecuteWithTimeoutAsync(
+                _service.CreateCollectionAsync("duplicate_test"),
+                operationName: "Create duplicate collection"));
     }
 
     /// <summary>
@@ -227,16 +336,22 @@ public class ChromaPersistentIntegrationTests
     public async Task AddDocumentsWithDuplicateIds_ShouldThrowException()
     {
         // Arrange
-        await _service.CreateCollectionAsync("duplicate_ids");
-        await _service.AddDocumentsAsync("duplicate_ids", 
-            new List<string> { "First doc" }, 
-            new List<string> { "duplicate_id" });
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("duplicate_ids"),
+            operationName: "Create collection for duplicate ID test");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.AddDocumentsAsync("duplicate_ids", 
+                new List<string> { "First doc" }, 
+                new List<string> { "duplicate_id" }),
+            operationName: "Add first document");
 
         // Act & Assert
         Assert.ThrowsAsync<InvalidOperationException>(async () => 
-            await _service.AddDocumentsAsync("duplicate_ids", 
-                new List<string> { "Second doc" }, 
-                new List<string> { "duplicate_id" }));
+            await TestUtilities.ExecuteWithTimeoutAsync(
+                _service.AddDocumentsAsync("duplicate_ids", 
+                    new List<string> { "Second doc" }, 
+                    new List<string> { "duplicate_id" }),
+                operationName: "Add duplicate document"));
     }
 
     /// <summary>
@@ -246,16 +361,24 @@ public class ChromaPersistentIntegrationTests
     public async Task DataPersistence_ShouldSurviveServiceRecreation()
     {
         // Arrange - Create data with first service instance
-        await _service.CreateCollectionAsync("persistence_test");
-        await _service.AddDocumentsAsync("persistence_test", 
-            new List<string> { "Persistent document" }, 
-            new List<string> { "persistent_id" });
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.CreateCollectionAsync("persistence_test"),
+            operationName: "Create persistence test collection");
+        await TestUtilities.ExecuteWithTimeoutAsync(
+            _service.AddDocumentsAsync("persistence_test", 
+                new List<string> { "Persistent document" }, 
+                new List<string> { "persistent_id" }),
+            operationName: "Add persistent document");
 
         // Act - Create new service instance pointing to same data directory
         var newService = new ChromaPersistentDbService(_logger, _options);
         
-        var collections = await newService.ListCollectionsAsync();
-        var count = await newService.GetCollectionCountAsync("persistence_test");
+        var collections = await TestUtilities.ExecuteWithTimeoutAsync(
+            newService.ListCollectionsAsync(),
+            operationName: "List collections with new service");
+        var count = await TestUtilities.ExecuteWithTimeoutAsync(
+            newService.GetCollectionCountAsync("persistence_test"),
+            operationName: "Get count with new service");
 
         // Assert
         Assert.That(collections, Does.Contain("persistence_test"));

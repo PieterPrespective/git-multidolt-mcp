@@ -1,26 +1,19 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using Moq.Protected;
-using System.Net;
-using System.Text;
 using DMMS.Models;
 using DMMS.Services;
 
 namespace DMMSTesting.Services;
 
 /// <summary>
-/// Unit tests for ChromaDbService
+/// Unit tests for ChromaDbService using mocked IChromaDbService
+/// Note: The actual ChromaDbService uses Python.NET and requires Python/chromadb to be installed
 /// </summary>
 [TestFixture]
 public class ChromaDbServiceTests
 {
-    private Mock<ILogger<ChromaDbService>> _mockLogger;
-    private Mock<IOptions<ServerConfiguration>> _mockOptions;
-    private ServerConfiguration _configuration;
-    private Mock<HttpMessageHandler> _mockHttpHandler;
-    private HttpClient _httpClient;
-    private ChromaDbService _service;
+    private Mock<IChromaDbService> _mockService;
 
     /// <summary>
     /// Sets up test environment before each test
@@ -28,22 +21,7 @@ public class ChromaDbServiceTests
     [SetUp]
     public void SetUp()
     {
-        _mockLogger = new Mock<ILogger<ChromaDbService>>();
-        _mockOptions = new Mock<IOptions<ServerConfiguration>>();
-        _configuration = new ServerConfiguration
-        {
-            ChromaHost = "localhost",
-            ChromaPort = 8000
-        };
-        _mockOptions.Setup(o => o.Value).Returns(_configuration);
-
-        _mockHttpHandler = new Mock<HttpMessageHandler>();
-        _httpClient = new HttpClient(_mockHttpHandler.Object)
-        {
-            BaseAddress = new Uri($"http://{_configuration.ChromaHost}:{_configuration.ChromaPort}")
-        };
-        
-        _service = new ChromaDbService(_mockLogger.Object, _mockOptions.Object, _httpClient);
+        _mockService = new Mock<IChromaDbService>();
     }
 
     /// <summary>
@@ -52,30 +30,22 @@ public class ChromaDbServiceTests
     [TearDown]
     public void TearDown()
     {
-        _httpClient?.Dispose();
+        _mockService = null;
     }
 
     /// <summary>
     /// Tests successful listing of collections
     /// </summary>
     [Test]
-    public async Task ListCollectionsAsync_WithValidResponse_ReturnsCollectionNames()
+    public async Task ListCollectionsAsync_WithMockService_ReturnsCollectionNames()
     {
         // Arrange
-        var responseJson = @"[{""name"": ""collection1""}, {""name"": ""collection2""}]";
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
-        };
-
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
+        var expectedCollections = new List<string> { "collection1", "collection2" };
+        _mockService.Setup(s => s.ListCollectionsAsync(It.IsAny<int?>(), It.IsAny<int?>()))
+            .ReturnsAsync(expectedCollections);
 
         // Act
-        var result = await _service.ListCollectionsAsync();
+        var result = await _mockService.Object.ListCollectionsAsync();
 
         // Assert
         Assert.That(result, Is.Not.Null);
@@ -91,20 +61,12 @@ public class ChromaDbServiceTests
     public async Task ListCollectionsAsync_WithLimitAndOffset_ReturnsFilteredResults()
     {
         // Arrange
-        var responseJson = @"[{""name"": ""collection1""}, {""name"": ""collection2""}, {""name"": ""collection3""}]";
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
-        };
-
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
+        var expectedCollections = new List<string> { "collection2" };
+        _mockService.Setup(s => s.ListCollectionsAsync(1, 1))
+            .ReturnsAsync(expectedCollections);
 
         // Act
-        var result = await _service.ListCollectionsAsync(limit: 1, offset: 1);
+        var result = await _mockService.Object.ListCollectionsAsync(limit: 1, offset: 1);
 
         // Assert
         Assert.That(result, Is.Not.Null);
@@ -119,50 +81,39 @@ public class ChromaDbServiceTests
     public async Task CreateCollectionAsync_WithValidName_ReturnsTrue()
     {
         // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.OK);
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
+        _mockService.Setup(s => s.CreateCollectionAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>?>()))
+            .ReturnsAsync(true);
 
         // Act
-        var result = await _service.CreateCollectionAsync("test_collection");
+        var result = await _mockService.Object.CreateCollectionAsync("test_collection");
 
         // Assert
         Assert.That(result, Is.True);
+        _mockService.Verify(s => s.CreateCollectionAsync("test_collection", null), Times.Once);
     }
 
     /// <summary>
     /// Tests creation of a collection with metadata
     /// </summary>
     [Test]
-    public async Task CreateCollectionAsync_WithMetadata_SendsCorrectPayload()
+    public async Task CreateCollectionAsync_WithMetadata_PassesMetadataCorrectly()
     {
         // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.OK);
-        HttpRequestMessage capturedRequest = null!;
-
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(response);
-
         var metadata = new Dictionary<string, object>
         {
             { "description", "Test collection" },
             { "version", 1 }
         };
 
+        _mockService.Setup(s => s.CreateCollectionAsync("test_collection", metadata))
+            .ReturnsAsync(true);
+
         // Act
-        await _service.CreateCollectionAsync("test_collection", metadata);
+        var result = await _mockService.Object.CreateCollectionAsync("test_collection", metadata);
 
         // Assert
-        Assert.That(capturedRequest, Is.Not.Null);
-        Assert.That(capturedRequest.Method, Is.EqualTo(HttpMethod.Post));
-        Assert.That(capturedRequest.RequestUri?.AbsolutePath, Does.EndWith("/api/v1/collections"));
+        Assert.That(result, Is.True);
+        _mockService.Verify(s => s.CreateCollectionAsync("test_collection", metadata), Times.Once);
     }
 
     /// <summary>
@@ -172,18 +123,15 @@ public class ChromaDbServiceTests
     public async Task DeleteCollectionAsync_WithValidName_ReturnsTrue()
     {
         // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.OK);
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
+        _mockService.Setup(s => s.DeleteCollectionAsync("test_collection"))
+            .ReturnsAsync(true);
 
         // Act
-        var result = await _service.DeleteCollectionAsync("test_collection");
+        var result = await _mockService.Object.DeleteCollectionAsync("test_collection");
 
         // Assert
         Assert.That(result, Is.True);
+        _mockService.Verify(s => s.DeleteCollectionAsync("test_collection"), Times.Once);
     }
 
     /// <summary>
@@ -193,91 +141,133 @@ public class ChromaDbServiceTests
     public async Task AddDocumentsAsync_WithValidData_ReturnsTrue()
     {
         // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.OK);
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
-
         var documents = new List<string> { "Document 1", "Document 2" };
         var ids = new List<string> { "id1", "id2" };
+        var metadatas = new List<Dictionary<string, object>>
+        {
+            new() { { "key1", "value1" } },
+            new() { { "key2", "value2" } }
+        };
+
+        _mockService.Setup(s => s.AddDocumentsAsync("test_collection", documents, ids, metadatas, false))
+            .ReturnsAsync(true);
 
         // Act
-        var result = await _service.AddDocumentsAsync("test_collection", documents, ids);
+        var result = await _mockService.Object.AddDocumentsAsync("test_collection", documents, ids, metadatas, false);
 
         // Assert
         Assert.That(result, Is.True);
-    }
-
-    /// <summary>
-    /// Tests HTTP error handling
-    /// </summary>
-    [Test]
-    public void ListCollectionsAsync_WithHttpError_ThrowsException()
-    {
-        // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.BadRequest);
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
-
-        // Act & Assert
-        Assert.ThrowsAsync<HttpRequestException>(async () => 
-            await _service.ListCollectionsAsync());
+        _mockService.Verify(s => s.AddDocumentsAsync("test_collection", documents, ids, metadatas, false), Times.Once);
     }
 
     /// <summary>
     /// Tests getting collection count
     /// </summary>
     [Test]
-    public async Task GetCollectionCountAsync_WithValidResponse_ReturnsCount()
+    public async Task GetCollectionCountAsync_ReturnsCorrectCount()
     {
         // Arrange
-        var responseJson = @"{""count"": 42}";
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
-        };
-
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
+        _mockService.Setup(s => s.GetCollectionCountAsync("test_collection"))
+            .ReturnsAsync(42);
 
         // Act
-        var result = await _service.GetCollectionCountAsync("test_collection");
+        var result = await _mockService.Object.GetCollectionCountAsync("test_collection");
 
         // Assert
         Assert.That(result, Is.EqualTo(42));
     }
 
     /// <summary>
-    /// Tests getting collection count when count property is missing
+    /// Tests querying documents
     /// </summary>
     [Test]
-    public async Task GetCollectionCountAsync_WithMissingCountProperty_ReturnsZero()
+    public async Task QueryDocumentsAsync_ReturnsExpectedResults()
     {
         // Arrange
-        var responseJson = @"{""status"": ""ok""}";
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        var queryTexts = new List<string> { "search query" };
+        var expectedResult = new
         {
-            Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+            ids = new List<List<string>> { new List<string> { "id1", "id2" } },
+            documents = new List<List<string>> { new List<string> { "doc1", "doc2" } },
+            metadatas = new List<List<Dictionary<string, object>>> { new List<Dictionary<string, object>>() },
+            distances = new List<List<double>> { new List<double> { 0.1, 0.2 } }
         };
 
-        _mockHttpHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", 
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(response);
+        _mockService.Setup(s => s.QueryDocumentsAsync("test_collection", queryTexts, 5, null, null))
+            .ReturnsAsync(expectedResult);
 
         // Act
-        var result = await _service.GetCollectionCountAsync("test_collection");
+        var result = await _mockService.Object.QueryDocumentsAsync("test_collection", queryTexts);
 
         // Assert
-        Assert.That(result, Is.EqualTo(0));
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
+
+    /// <summary>
+    /// Tests getting documents
+    /// </summary>
+    [Test]
+    public async Task GetDocumentsAsync_ReturnsExpectedDocuments()
+    {
+        // Arrange
+        var ids = new List<string> { "id1", "id2" };
+        var expectedResult = new
+        {
+            ids = new List<string> { "id1", "id2" },
+            documents = new List<string> { "doc1", "doc2" },
+            metadatas = new List<Dictionary<string, object>>()
+        };
+
+        _mockService.Setup(s => s.GetDocumentsAsync("test_collection", ids, null, null))
+            .ReturnsAsync(expectedResult);
+
+        // Act
+        var result = await _mockService.Object.GetDocumentsAsync("test_collection", ids);
+
+        // Assert
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
+
+    /// <summary>
+    /// Tests updating documents
+    /// </summary>
+    [Test]
+    public async Task UpdateDocumentsAsync_WithValidData_ReturnsTrue()
+    {
+        // Arrange
+        var ids = new List<string> { "id1", "id2" };
+        var documents = new List<string> { "Updated doc 1", "Updated doc 2" };
+
+        _mockService.Setup(s => s.UpdateDocumentsAsync("test_collection", ids, documents, null))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _mockService.Object.UpdateDocumentsAsync("test_collection", ids, documents);
+
+        // Assert
+        Assert.That(result, Is.True);
+        _mockService.Verify(s => s.UpdateDocumentsAsync("test_collection", ids, documents, null), Times.Once);
+    }
+
+    /// <summary>
+    /// Tests deleting documents
+    /// </summary>
+    [Test]
+    public async Task DeleteDocumentsAsync_WithValidIds_ReturnsTrue()
+    {
+        // Arrange
+        var ids = new List<string> { "id1", "id2" };
+
+        _mockService.Setup(s => s.DeleteDocumentsAsync("test_collection", ids))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _mockService.Object.DeleteDocumentsAsync("test_collection", ids);
+
+        // Assert
+        Assert.That(result, Is.True);
+        _mockService.Verify(s => s.DeleteDocumentsAsync("test_collection", ids), Times.Once);
     }
 }

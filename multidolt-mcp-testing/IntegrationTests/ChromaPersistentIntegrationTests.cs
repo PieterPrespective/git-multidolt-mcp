@@ -1,21 +1,31 @@
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using DMMS.Models;
 using DMMS.Services;
 using DMMSTesting.Utilities;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using NUnit.Framework.Internal;
+using System.Diagnostics;
 
 namespace DMMSTesting.IntegrationTests;
 
 /// <summary>
 /// Integration tests for ChromaPersistentDbService with actual file system
+/// Manages PythonContext lifecycle properly to avoid initialization issues
 /// </summary>
 [TestFixture]
 public class ChromaPersistentIntegrationTests
 {
-    private ChromaPersistentDbService _service;
-    private string _testDataPath;
-    private ILogger<ChromaPersistentDbService> _logger;
-    private IOptions<ServerConfiguration> _options;
+    private ChromaPersistentDbService _service = null!;
+
+    private string _testDataPath = null!;
+
+    private int setupValue = 0;
+
+    private ILogger<ChromaPersistentDbService> _logger = null!;
+
+    private IOptions<ServerConfiguration> _options = null!;
+
+
 
     /// <summary>
     /// Sets up test environment before each test
@@ -23,8 +33,17 @@ public class ChromaPersistentIntegrationTests
     [SetUp]
     public void SetUp()
     {
-        // Create temporary directory for test data
+        Console.WriteLine($"every time setup = {setupValue}");
+
+        // PythonContext is managed by GlobalTestSetup - just verify it's available
+        if (!PythonContext.IsInitialized)
+        {
+            throw new InvalidOperationException("PythonContext should be initialized by GlobalTestSetup");
+        }
+        
+        // Create unique temporary directory for this test
         _testDataPath = Path.Combine(Path.GetTempPath(), $"chroma_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_testDataPath);
         
         // Set up logger and configuration
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
@@ -42,48 +61,20 @@ public class ChromaPersistentIntegrationTests
 
     /// <summary>
     /// Cleans up test environment after each test
+    /// Note: PythonContext is NOT shut down here - only after all tests complete
     /// </summary>
     [TearDown]
     public async Task TearDown()
     {
-        // Explicitly clean up test data before disposal
-        if (_service != null)
-        {
-            try
-            {
-                // Delete any collections created during tests
-                var collections = _service.ListCollectionsAsync().Result;
-                foreach (var collectionName in collections)
-                {
-                    try
-                    {
-                        _service.DeleteCollectionAsync(collectionName).Wait();
-                        Console.WriteLine($"Deleted test collection '{collectionName}'");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error deleting collection '{collectionName}': {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error during test collection cleanup: {ex.Message}");
-            }
-        }
-        
-        // Dispose service (handles connections only)
+        // Dispose service first (releases Python references)
         _service?.Dispose();
-
-        // Wait briefly for file handles to be released after disposal
-        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
-        await Task.Delay(100);
-
-
-        //Thread.Sleep(100);
-
-        // Clean up test directory with retry logic
         
+        // Wait briefly for file handles to be released
+        await Task.Delay(200);
+        
+        // Clean up test directory with retry logic
+        // Note: Directory cleanup happens AFTER service disposal to avoid file locking issues
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         for (int attempt = 0; attempt < 5; attempt++)
         {
             try
@@ -92,23 +83,30 @@ public class ChromaPersistentIntegrationTests
                 {
                     Directory.Delete(_testDataPath, recursive: true);
                 }
-
-                _logger?.LogInformation($"Succesfully cleared test chroma data in test directory: {_testDataPath}");
-
+                
+                _logger?.LogInformation($"Successfully cleared test directory: {_testDataPath} in {sw.ElapsedMilliseconds}ms");
                 break; // Success
             }
             catch (IOException ex) when (attempt < 4)
             {
                 // Wait and retry with exponential backoff
-                _logger?.LogWarning($"Attempt {attempt + 1} @ t={sw.ElapsedMilliseconds}ms to delete test directory failed: {ex.Message}. Retrying...");
+                _logger?.LogWarning($"Attempt {attempt + 1} @ {sw.ElapsedMilliseconds}ms to delete test directory failed: {ex.Message}. Retrying...");
                 await Task.Delay(100 * (int)Math.Pow(2, attempt));
             }
             catch (IOException ex) when (ex.Message.Contains("data_level0.bin") || ex.Message.Contains("chroma.sqlite3"))
             {
                 // Known ChromaDB file locking issue - log but don't fail the test
-                Console.WriteLine($"Warning: ChromaDB file locking prevented directory cleanup: {ex.Message} after t={sw.ElapsedMilliseconds}ms");
-                Console.WriteLine($"This is a known limitation and does not affect test functionality. test directory: '{_testDataPath}'");
+                Console.WriteLine($"Warning: ChromaDB file locking prevented directory cleanup: {ex.Message} after {sw.ElapsedMilliseconds}ms");
+                Console.WriteLine($"This is a known limitation and does not affect test functionality. Directory: '{_testDataPath}'");
                 break; // Exit without throwing
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, $"Unexpected error during directory cleanup: {_testDataPath}");
+                if (attempt == 4) // Last attempt
+                {
+                    Console.WriteLine($"Failed to cleanup test directory after 5 attempts: {_testDataPath}");
+                }
             }
         }
     }
@@ -120,9 +118,16 @@ public class ChromaPersistentIntegrationTests
     public async Task CreateAndListCollections_ShouldWork()
     {
         // Arrange & Act - Create collections
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        _logger?.LogInformation($"[CreateAndListCollections_ShouldWork] creating collection 1 @ {sw.ElapsedMilliseconds}ms");
+
         await TestUtilities.ExecuteWithTimeoutAsync(
             _service.CreateCollectionAsync("test_collection_1"), 
             operationName: "Create collection 1");
+
+        _logger?.LogInformation($"[CreateAndListCollections_ShouldWork] creating collection 2 @ {sw.ElapsedMilliseconds}ms");
+
+
         await TestUtilities.ExecuteWithTimeoutAsync(
             _service.CreateCollectionAsync("test_collection_2", new Dictionary<string, object>
             {
@@ -131,15 +136,21 @@ public class ChromaPersistentIntegrationTests
             }),
             operationName: "Create collection 2");
 
+        _logger?.LogInformation($"[CreateAndListCollections_ShouldWork] listing collections @ {sw.ElapsedMilliseconds}ms");
+
         var collections = await TestUtilities.ExecuteWithTimeoutAsync(
             _service.ListCollectionsAsync(),
             operationName: "List collections");
+
+        _logger?.LogInformation($"[CreateAndListCollections_ShouldWork] validating results @ {sw.ElapsedMilliseconds}ms");
 
         // Assert
         Assert.That(collections, Is.Not.Null);
         Assert.That(collections.Count, Is.EqualTo(2));
         Assert.That(collections, Does.Contain("test_collection_1"));
         Assert.That(collections, Does.Contain("test_collection_2"));
+
+        _logger?.LogInformation($"[CreateAndListCollections_ShouldWork] done @ {sw.ElapsedMilliseconds}ms");
     }
 
     /// <summary>
@@ -148,11 +159,17 @@ public class ChromaPersistentIntegrationTests
     [Test]
     public async Task AddAndQueryDocuments_ShouldWork()
     {
+        Stopwatch sw = Stopwatch.StartNew();
+
+        _logger.LogInformation($"[AddAndQueryDocuments_ShouldWork] Starting test @ {sw.ElapsedMilliseconds}ms");
         // Arrange
         await TestUtilities.ExecuteWithTimeoutAsync(
             _service.CreateCollectionAsync("docs_collection"),
             operationName: "Create docs collection");
-        
+
+        _logger.LogInformation($"[AddAndQueryDocuments_ShouldWork] created docs @ {sw.ElapsedMilliseconds}ms");
+
+
         var documents = new List<string>
         {
             "This is the first document about artificial intelligence",
@@ -172,10 +189,14 @@ public class ChromaPersistentIntegrationTests
             _service.AddDocumentsAsync("docs_collection", documents, ids, metadatas),
             operationName: "Add documents");
 
+        _logger.LogInformation($"[AddAndQueryDocuments_ShouldWork] added docs @ {sw.ElapsedMilliseconds}ms");
+
         // Act - Query documents
         var queryResult = await TestUtilities.ExecuteWithTimeoutAsync(
             _service.QueryDocumentsAsync("docs_collection", new List<string> { "artificial intelligence" }),
             operationName: "Query documents");
+
+        _logger.LogInformation($"[AddAndQueryDocuments_ShouldWork] queried docs @ {sw.ElapsedMilliseconds}ms");
 
         // Assert
         Assert.That(queryResult, Is.Not.Null);
@@ -335,15 +356,26 @@ public class ChromaPersistentIntegrationTests
     [Test]
     public async Task AddDocumentsWithDuplicateIds_ShouldThrowException()
     {
+        Stopwatch sw = Stopwatch.StartNew();
+
+        _logger.LogInformation($"[AddDocumentsWithDuplicateIds_ShouldThrowException] Starting test @ {sw.ElapsedMilliseconds}ms");  
+
         // Arrange
         await TestUtilities.ExecuteWithTimeoutAsync(
             _service.CreateCollectionAsync("duplicate_ids"),
             operationName: "Create collection for duplicate ID test");
+
+        _logger.LogInformation($"[AddDocumentsWithDuplicateIds_ShouldThrowException] Created collection @ {sw.ElapsedMilliseconds}ms");
+
+
         await TestUtilities.ExecuteWithTimeoutAsync(
             _service.AddDocumentsAsync("duplicate_ids", 
                 new List<string> { "First doc" }, 
                 new List<string> { "duplicate_id" }),
             operationName: "Add first document");
+
+        _logger.LogInformation($"[AddDocumentsWithDuplicateIds_ShouldThrowException] Added original docs @ {sw.ElapsedMilliseconds}ms");
+
 
         // Act & Assert
         Assert.ThrowsAsync<InvalidOperationException>(async () => 
@@ -352,6 +384,9 @@ public class ChromaPersistentIntegrationTests
                     new List<string> { "Second doc" }, 
                     new List<string> { "duplicate_id" }),
                 operationName: "Add duplicate document"));
+
+        _logger.LogInformation($"[AddDocumentsWithDuplicateIds_ShouldThrowException] Added duplicate docs @ {sw.ElapsedMilliseconds}ms");
+
     }
 
     /// <summary>

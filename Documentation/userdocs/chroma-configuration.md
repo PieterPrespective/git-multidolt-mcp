@@ -299,9 +299,69 @@ icacls "C:\ProgramData\DMMS\ChromaData" /grant "Users:(OI)(CI)F"
 - Consider VPN or private network access
 - Implement authentication if available
 
-## Migration Between Modes
+## Database Migration and Compatibility
 
-### From Persistent to Server Mode
+### Automatic Migration from Older ChromaDB Versions
+
+DMMS automatically detects and migrates older ChromaDB databases from previous versions and other Chroma implementations. This ensures compatibility with existing data from various sources.
+
+#### Supported Migration Sources
+- **chromadb-mcp**: Legacy ChromaDB MCP implementations
+- **ChromaDB 0.4.x and earlier**: Older schema versions
+- **Custom ChromaDB setups**: Various schema configurations
+
+#### Migration Process
+When DMMS starts with an existing ChromaDB database, it automatically:
+
+1. **Detects schema version**: Analyzes the SQLite database structure
+2. **Identifies compatibility issues**: Checks for column name variations and format differences
+3. **Performs safe migration**: Updates schema while preserving all data
+4. **Validates migration**: Ensures collections and documents remain accessible
+
+#### Migration Features
+- ✅ **Automatic detection** of older database formats
+- ✅ **Zero data loss** migration process
+- ✅ **Idempotent operations** (safe to run multiple times)
+- ✅ **Backward compatibility** with various schema versions
+- ✅ **Configuration preservation** with sensible defaults
+
+#### Common Migration Scenarios
+
+**Legacy Column Names:**
+- `config_json_str` → `configuration_json_str`
+- Empty configuration objects get default `_type` fields
+- Metadata normalization and validation
+
+**Database Path Examples:**
+```json
+{
+  "env": {
+    "CHROMA_MODE": "persistent",
+    "CHROMA_DATA_PATH": "C:\\Users\\Username\\existing_chroma_db"
+  }
+}
+```
+
+#### Migration Validation
+After migration, DMMS validates:
+- Collection accessibility
+- Document count preservation  
+- Metadata integrity
+- Query functionality
+
+If migration issues occur, check the logs for detailed diagnostics:
+```json
+{
+  "env": {
+    "ENABLE_LOGGING": "true",
+    "LOG_LEVEL": "Debug"
+  }
+}
+```
+
+### Manual Migration Between Modes
+
+#### From Persistent to Server Mode
 
 1. Export collections from persistent storage:
    ```bash
@@ -318,7 +378,7 @@ icacls "C:\ProgramData\DMMS\ChromaData" /grant "Users:(OI)(CI)F"
    }
    ```
 
-### From Server to Persistent Mode
+#### From Server to Persistent Mode
 
 1. Export data from ChromaDB server
 2. Update configuration to persistent mode
@@ -343,6 +403,28 @@ Solution: Check for corrupted files, restore from backup
 **Issue:** Collection not found
 ```
 Solution: Verify directory exists and has proper structure
+```
+
+**Issue:** Database migration errors (older ChromaDB versions)
+```
+Error: "no such column: configuration_json_str"
+Solution: DMMS automatically handles this migration. Enable debug logging to troubleshoot:
+{
+  "ENABLE_LOGGING": "true",
+  "LOG_LEVEL": "Debug"
+}
+```
+
+**Issue:** Python.NET execution errors during migration
+```
+Error: "'list' object has no attribute 'GetLength'"
+Solution: This has been resolved in current DMMS versions. Update to latest version.
+```
+
+**Issue:** File locking during database operations
+```
+Error: "The process cannot access the file because it is being used by another process"
+Solution: Normal during heavy operations. DMMS handles this gracefully with retry logic.
 ```
 
 #### Server Mode Issues

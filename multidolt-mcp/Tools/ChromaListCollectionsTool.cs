@@ -32,10 +32,13 @@ public class ChromaListCollectionsTool
     {
         try
         {
-            _logger.LogInformation($"Listing collections with limit={limit}, offset={offset}");
+            _logger.LogInformation($"[ChromaListCollectionsTool.ListCollections] Listing collections with limit={limit}, offset={offset}");
 
             var collections = await _chromaService.ListCollectionsAsync(limit, offset);
-            
+
+            _logger.LogInformation($"[ChromaListCollectionsTool.ListCollections] gotten output: { ((collections == null) ? "Null" : string.Join(',', collections.ToArray())) }");
+
+
             if (collections.Count == 0)
             {
                 collections.Add("__NO_COLLECTIONS_FOUND__");

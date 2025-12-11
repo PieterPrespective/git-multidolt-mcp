@@ -54,7 +54,44 @@ if (enableLogging)
     
     logger.LogInformation("DMMS (Dolt Multi-Database MCP Server) v{Version} starting up", version);
     logger.LogInformation("This server provides MCP access to multiple Dolt databases via terminal commands");
+
+    // Initialize PythonContext on main thread to prevent GIL deadlocks
+    try
+    {
+        logger.LogInformation("Initializing Python context...");
+        var pythonDll = PythonContextUtility.FindPythonDll(logger);
+        PythonContext.Initialize(logger, pythonDll);
+        logger.LogInformation("Python context initialized successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to initialize Python context. ChromaDB functionality will be unavailable.");
+        throw; // Don't continue if Python fails to initialize
+    }
 }
+else
+{
+    // Initialize PythonContext even without logging
+    try
+    {
+        var pythonDll = PythonContextUtility.FindPythonDll();
+        PythonContext.Initialize(pythonDllPath: pythonDll);
+    }
+    catch (Exception)
+    {
+        throw; // Don't continue if Python fails to initialize
+    }
+}
+
+// Register shutdown hook to clean up Python context
+var applicationLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+applicationLifetime.ApplicationStopping.Register(() =>
+{
+    var logger = enableLogging ? host.Services.GetService<ILogger<Program>>() : null;
+    logger?.LogInformation("Shutting down Python context...");
+    PythonContext.Shutdown();
+    logger?.LogInformation("Python context shutdown complete");
+});
 
 await host.RunAsync();
 

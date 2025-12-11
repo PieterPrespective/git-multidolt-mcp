@@ -1,6 +1,14 @@
 # Chroma Tools Reference
 
-The DMMS (Dolt Multi-Database MCP Server) provides comprehensive Chroma vector database integration through 8 specialized tools. These tools enable you to manage collections, store documents, and perform vector searches using either a persistent file-based storage or HTTP server connection.
+The DMMS (Dolt Multi-Database MCP Server) provides comprehensive Chroma vector database integration through 7 core tools, with additional advanced tools available via MCP integration. These tools enable you to manage collections, store documents, and perform vector searches using either a persistent file-based storage or HTTP server connection.
+
+## Migration and Compatibility
+
+DMMS includes automatic migration capabilities for older ChromaDB databases:
+- **Automatic Detection**: Recognizes legacy ChromaDB formats from various sources
+- **Schema Migration**: Converts older column names (`config_json_str` → `configuration_json_str`)
+- **Zero Data Loss**: Preserves all collections and documents during migration
+- **Validation**: Ensures migrated databases function correctly
 
 ## Overview
 
@@ -21,6 +29,15 @@ The Chroma tools are designed to work with ChromaDB, providing vector database f
 - [chroma_add_documents](#chroma_add_documents) - Add documents to collections
 - [chroma_query_documents](#chroma_query_documents) - Search documents by text
 - [chroma_delete_documents](#chroma_delete_documents) - Remove documents
+
+### Advanced Tools (Available via MCP Integration)
+When using DMMS with the Chroma MCP integration (chroma-feat-design-planning-mcp), additional tools become available:
+- **chroma_get_documents** - Retrieve documents with filtering
+- **chroma_update_documents** - Modify existing documents
+- **chroma_peek_collection** - Preview collection contents
+- **chroma_get_collection_info** - Get detailed collection metadata
+- **chroma_modify_collection** - Update collection properties
+- **chroma_fork_collection** - Create collection copies
 
 ---
 
@@ -348,6 +365,8 @@ Common error types:
 - `DUPLICATE_DOCUMENT_ID` - Document ID already exists in collection
 - `INVALID_PARAMETERS` - Missing or invalid input parameters
 - `STORAGE_ERROR` - File system or database errors
+- `MIGRATION_ERROR` - Issues during automatic database migration
+- `PYTHON_RUNTIME_ERROR` - Python.NET execution errors (resolved in current version)
 
 ## Performance Considerations
 
@@ -479,5 +498,18 @@ Use consistent ID patterns:
 - `doc_YYYY-MM-DD_sequence` for time-based IDs
 - `source_type_unique_id` for source-based IDs
 - `collection_category_number` for categorized content
+
+### Migration Best Practices
+When migrating from older ChromaDB versions:
+- **Backup first**: Always backup your database before migration
+- **Enable logging**: Use `"ENABLE_LOGGING": "true"` and `"LOG_LEVEL": "Debug"` for troubleshooting
+- **Verify collections**: Check that all collections are accessible after migration
+- **Test queries**: Ensure search functionality works as expected
+
+### Database Compatibility
+DMMS supports migration from:
+- **chromadb-mcp**: Legacy MCP implementations
+- **ChromaDB 0.4.x and earlier**: Various schema versions
+- **Custom ChromaDB installations**: Community and enterprise versions
 
 For complete setup instructions and configuration options, see [Chroma Configuration](chroma-configuration.md).

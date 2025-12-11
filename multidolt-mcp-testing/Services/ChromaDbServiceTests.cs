@@ -30,7 +30,7 @@ public class ChromaDbServiceTests
     [TearDown]
     public void TearDown()
     {
-        _mockService = null;
+        _mockService = null!;
     }
 
     /// <summary>

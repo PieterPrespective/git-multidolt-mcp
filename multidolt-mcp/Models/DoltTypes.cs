@@ -42,14 +42,29 @@ namespace DMMS.Models
     /// <summary>
     /// A row from a Dolt diff operation
     /// </summary>
-    public record DiffRow(
-        string DiffType,      // "added", "modified", "removed"
-        string SourceId,
-        string FromContentHash,
-        string ToContentHash,
-        string ToContent,
-        Dictionary<string, object> Metadata
-    );
+    public class DiffRow
+    {
+        public string DiffType { get; set; } = "";           // "added", "modified", "removed"
+        public string SourceId { get; set; } = "";
+        public string FromContentHash { get; set; } = "";
+        public string ToContentHash { get; set; } = "";
+        public string ToContent { get; set; } = "";
+        public string ToMetadata { get; set; } = "";         // JSON metadata
+        public Dictionary<string, object> Metadata { get; set; } = new();
+        
+        public DiffRow() { }
+        
+        public DiffRow(string diffType, string sourceId, string fromContentHash, 
+            string toContentHash, string toContent, Dictionary<string, object> metadata)
+        {
+            DiffType = diffType;
+            SourceId = sourceId;
+            FromContentHash = fromContentHash;
+            ToContentHash = toContentHash;
+            ToContent = toContent;
+            Metadata = metadata;
+        }
+    }
 
     /// <summary>
     /// Information about a merge conflict

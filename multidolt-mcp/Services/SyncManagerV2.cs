@@ -33,7 +33,11 @@ namespace DMMS.Services
             // Initialize detectors and syncers
             _deltaDetector = new DeltaDetectorV2(dolt, logger: null);
             _chromaToDoltDetector = new ChromaToDoltDetector(chromaService, dolt, logger: null);
-            _chromaToDoltSyncer = new ChromaToDoltSyncer(chromaService, dolt, _chromaToDoltDetector, logger: null);
+            
+            // Create a logger for ChromaToDoltSyncer so we can debug the document retrieval issue
+            var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+            var syncerLogger = loggerFactory.CreateLogger<ChromaToDoltSyncer>();
+            _chromaToDoltSyncer = new ChromaToDoltSyncer(chromaService, dolt, _chromaToDoltDetector, logger: syncerLogger);
         }
 
         #region Initialization

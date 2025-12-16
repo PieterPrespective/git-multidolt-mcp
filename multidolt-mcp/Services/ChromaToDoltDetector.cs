@@ -42,12 +42,35 @@ namespace DMMS.Services
             {
                 // Get documents flagged as local changes
                 var flaggedChanges = await GetFlaggedLocalChangesAsync(collectionName);
+                _logger?.LogInformation("GetFlaggedLocalChangesAsync returned {Count} flagged changes", flaggedChanges.Count);
+                
+                // FALLBACK: If no flagged changes found, but we suspect there should be changes,
+                // compare all ChromaDB documents with Dolt to find new documents
+                if (flaggedChanges.Count == 0)
+                {
+                    _logger?.LogInformation("No flagged local changes found, checking for new documents in ChromaDB");
+                    var fallbackDocs = await FindChromaOnlyDocumentsAsync(collectionName);
+                    _logger?.LogInformation("FindChromaOnlyDocumentsAsync returned {Count} ChromaDB-only documents", fallbackDocs.Count);
+                    if (fallbackDocs.Count > 0)
+                    {
+                        _logger?.LogInformation("Found {Count} documents in ChromaDB that don't exist in Dolt - treating as local changes", fallbackDocs.Count);
+                        flaggedChanges = fallbackDocs;
+                    }
+                    else
+                    {
+                        _logger?.LogInformation("No ChromaDB-only documents found either");
+                    }
+                }
+                else
+                {
+                    _logger?.LogInformation("Using {Count} flagged changes found by GetFlaggedLocalChangesAsync", flaggedChanges.Count);
+                }
                 
                 // Compare content hashes to detect modifications
                 var hashMismatches = await CompareContentHashesAsync(collectionName);
                 
-                // Find documents that exist only in ChromaDB
-                var chromaOnlyDocs = await FindChromaOnlyDocumentsAsync(collectionName);
+                // Find documents that exist only in ChromaDB (excluding fallback docs already processed)
+                var chromaOnlyDocsFromComparison = await FindChromaOnlyDocumentsAsync(collectionName);
                 
                 // Find documents deleted from ChromaDB but still in Dolt
                 var deletedDocs = await FindDeletedDocumentsAsync(collectionName);
@@ -56,16 +79,18 @@ namespace DMMS.Services
                 var newDocuments = new List<ChromaDocument>();
                 var modifiedDocuments = new List<ChromaDocument>();
                 
-                // Documents flagged as local changes
+                // Documents flagged as local changes (includes fallback documents)
                 foreach (var doc in flaggedChanges)
                 {
                     if (!await DocumentExistsInDoltAsync(doc.DocId, collectionName))
                     {
                         newDocuments.Add(doc);
+                        _logger?.LogInformation("Found new document: {DocId}", doc.DocId);
                     }
                     else
                     {
                         modifiedDocuments.Add(doc);
+                        _logger?.LogInformation("Found modified document: {DocId}", doc.DocId);
                     }
                 }
                 
@@ -78,8 +103,8 @@ namespace DMMS.Services
                     }
                 }
                 
-                // Documents only in ChromaDB (new)
-                foreach (var doc in chromaOnlyDocs)
+                // Documents only in ChromaDB (new) - exclude those already found via fallback
+                foreach (var doc in chromaOnlyDocsFromComparison)
                 {
                     if (!newDocuments.Any(n => n.DocId == doc.DocId))
                     {
@@ -120,17 +145,28 @@ namespace DMMS.Services
                     ["is_local_change"] = true
                 };
 
+                _logger?.LogInformation("Searching for documents with is_local_change=true in collection {Collection}", collectionName);
                 var results = await _chroma.GetDocumentsAsync(collectionName, where: whereFilter);
+                
+                _logger?.LogInformation("GetDocumentsAsync returned: {Results}", results != null ? "non-null result" : "null result");
                 
                 if (results == null)
                 {
+                    _logger?.LogWarning("No results returned from ChromaDB query for flagged local changes");
                     return new List<ChromaDocument>();
+                }
+
+                // Check what we got back from the query
+                if (results is Dictionary<string, object> resultsDict)
+                {
+                    var ids = resultsDict.GetValueOrDefault("ids") as List<object> ?? new List<object>();
+                    _logger?.LogInformation("Query returned {Count} document IDs for flagged local changes", ids.Count);
                 }
 
                 // Convert results to ChromaDocument objects
                 var documents = ConvertQueryResultsToDocuments(results, collectionName);
                 
-                _logger?.LogDebug("Found {Count} flagged local changes", documents.Count);
+                _logger?.LogInformation("Found {Count} flagged local changes after conversion", documents.Count);
                 return documents;
             }
             catch (Exception ex)
@@ -271,15 +307,36 @@ namespace DMMS.Services
         {
             var documents = new Dictionary<string, List<ChromaChunk>>();
             
-            if (results == null)
+            try
             {
-                return new List<ChromaDocument>();
-            }
+                if (results == null)
+                {
+                    return new List<ChromaDocument>();
+                }
 
-            // Group chunks by document ID
-            var ids = results.ids as List<object> ?? new List<object>();
-            var docs = results.documents as List<object> ?? new List<object>();
-            var metadatas = results.metadatas as List<object> ?? new List<object>();
+                // Group chunks by document ID
+                // Handle both dynamic objects and Dictionary<string, object>
+                var resultsDict = results as Dictionary<string, object> ?? new Dictionary<string, object>();
+                var ids = (resultsDict.GetValueOrDefault("ids") as List<object>) ?? new List<object>();
+                var docs = (resultsDict.GetValueOrDefault("documents") as List<object>) ?? new List<object>();
+                var metadatas = (resultsDict.GetValueOrDefault("metadatas") as List<object>) ?? new List<object>();
+            
+            // Detect and fix ID/document content swap issue
+            // If the first ID looks like document content (long text), swap the collections
+            if (ids.Count > 0 && docs.Count > 0)
+            {
+                var firstId = ids[0]?.ToString() ?? "";
+                var firstDoc = docs[0]?.ToString() ?? "";
+                
+                // If ID is very long (>64 chars) and looks like content, but the document is short and looks like an ID, swap them
+                if (firstId.Length > 64 && firstDoc.Length <= 64 && 
+                    (firstId.Contains("\n") || firstId.Contains(" ")) && 
+                    !firstDoc.Contains("\n") && !firstDoc.Contains(" "))
+                {
+                    _logger?.LogWarning("Detected ID/document content swap in ChromaToDoltDetector - correcting data order");
+                    (ids, docs) = (docs, ids); // Swap the collections
+                }
+            }
             
             for (int i = 0; i < ids.Count; i++)
             {
@@ -329,7 +386,13 @@ namespace DMMS.Services
                 }
             }
             
-            return chromaDocuments;
+                return chromaDocuments;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to convert query results to documents");
+                return new List<ChromaDocument>();
+            }
         }
 
         /// <summary>
@@ -410,8 +473,43 @@ namespace DMMS.Services
                 WHERE doc_id = '{docId}' AND collection_name = '{collectionName}'";
 
             var results = await _dolt.QueryAsync<dynamic>(sql);
+            if (results == null || !results.Any()) return false;
+            
             var result = results.FirstOrDefault();
-            return result?.count > 0;
+            
+            // Handle both JsonElement and dynamic types
+            try
+            {
+                // If it's a JsonElement, try to get the count property
+                if (result is System.Text.Json.JsonElement jsonElement)
+                {
+                    if (jsonElement.TryGetProperty("count", out var countProperty))
+                    {
+                        if (countProperty.TryGetInt32(out var count))
+                        {
+                            return count > 0;
+                        }
+                        // If it's a string representation of a number
+                        if (countProperty.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var countStr = countProperty.GetString();
+                            return int.TryParse(countStr, out var parsedCount) && parsedCount > 0;
+                        }
+                    }
+                }
+                else
+                {
+                    // Handle dynamic object case
+                    var count = (int)result.count;
+                    return count > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to parse count from query result for document {DocId}", docId);
+            }
+            
+            return false;
         }
 
         /// <summary>

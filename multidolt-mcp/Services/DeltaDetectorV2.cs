@@ -147,19 +147,47 @@ namespace DMMS.Services
 
                 foreach (var row in results)
                 {
-                    // Parse metadata JSON
-                    var metadataDict = string.IsNullOrEmpty(row.metadata_json) 
+                    // Parse metadata JSON - try both possible column names
+                    string metadataJson = "";
+                    try
+                    {
+                        // Try the alias first
+                        metadataJson = row.metadata_json?.ToString() ?? "";
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            // Fallback to the original column name
+                            metadataJson = row.metadata?.ToString() ?? "";
+                        }
+                        catch
+                        {
+                            // If neither work, use empty string
+                            metadataJson = "";
+                        }
+                    }
+                    
+                    var metadataDict = string.IsNullOrEmpty(metadataJson) 
                         ? new Dictionary<string, object>()
-                        : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(row.metadata_json) 
+                        : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson) 
                             ?? new Dictionary<string, object>();
 
+                    // Handle both dynamic and JsonElement result types
+                    string docId = GetFieldValue(row, "doc_id");
+                    string rowCollectionName = GetFieldValue(row, "collection_name"); 
+                    string content = GetFieldValue(row, "content");
+                    string contentHash = GetFieldValue(row, "content_hash");
+                    string title = GetFieldValue(row, "title");
+                    string docType = GetFieldValue(row, "doc_type");
+                    
                     documents.Add(new DoltDocumentV2(
-                        DocId: row.doc_id,
-                        CollectionName: row.collection_name,
-                        Content: row.content,
-                        ContentHash: row.content_hash,
-                        Title: row.title,
-                        DocType: row.doc_type,
+                        DocId: docId,
+                        CollectionName: rowCollectionName,
+                        Content: content,
+                        ContentHash: contentHash,
+                        Title: title,
+                        DocType: docType,
                         Metadata: metadataDict
                     ));
                 }
@@ -173,6 +201,52 @@ namespace DMMS.Services
             {
                 _logger?.LogError(ex, "Failed to get all documents for collection {Collection}", collectionName);
                 throw new DoltException($"Failed to get all documents: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Helper method to safely extract field values from dynamic results (handles both dynamic and JsonElement types)
+        /// </summary>
+        private static string GetFieldValue(dynamic row, string fieldName)
+        {
+            try
+            {
+                // If it's a JsonElement, use proper JsonElement access
+                if (row is System.Text.Json.JsonElement jsonElement)
+                {
+                    if (jsonElement.TryGetProperty(fieldName, out var property))
+                    {
+                        return property.GetString() ?? "";
+                    }
+                    return "";
+                }
+
+                // Try as ExpandoObject (dynamic dictionary)
+                if (row is System.Dynamic.ExpandoObject expandoObj)
+                {
+                    var dict = expandoObj as IDictionary<string, object>;
+                    if (dict.TryGetValue(fieldName, out var value))
+                    {
+                        return value?.ToString() ?? "";
+                    }
+                    return "";
+                }
+
+                // Fallback: try direct dynamic property access
+                return ((object)row).GetType().GetProperty(fieldName)?.GetValue(row)?.ToString() ?? "";
+            }
+            catch
+            {
+                // Final fallback: try direct dynamic access
+                try
+                {
+                    var result = (string)row[fieldName];
+                    return result ?? "";
+                }
+                catch
+                {
+                    return "";
+                }
             }
         }
 

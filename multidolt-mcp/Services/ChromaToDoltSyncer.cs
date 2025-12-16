@@ -197,10 +197,21 @@ namespace DMMS.Services
         /// </summary>
         public async Task InsertDocumentToDoltAsync(ChromaDocument doc, string collectionName)
         {
-            _logger?.LogDebug("Inserting document {DocId} into Dolt", doc.DocId);
+            _logger?.LogInformation("Inserting document {DocId} into Dolt", doc.DocId);
 
             // Convert to DoltDocumentV2
             var doltDoc = DocumentConverterUtilityV2.ConvertChromaToDolt(doc);
+            
+            _logger?.LogInformation("Converted ChromaDocument to DoltDocument: DocId='{DocId}', ContentLength={ContentLength}", 
+                doltDoc.DocId, doltDoc.Content.Length);
+            
+            // Check if DocId is too long
+            if (doltDoc.DocId.Length > 64)
+            {
+                _logger?.LogError("DocId '{DocId}' is too long ({Length} chars) for schema VARCHAR(64)", 
+                    doltDoc.DocId, doltDoc.DocId.Length);
+                throw new InvalidOperationException($"DocId is too long: {doltDoc.DocId.Length} characters (max 64)");
+            }
             
             // Prepare metadata JSON
             var metadataJson = JsonSerializer.Serialize(doltDoc.Metadata ?? new Dictionary<string, object>());
@@ -219,6 +230,7 @@ namespace DMMS.Services
                      {(escapedDocType != null ? $"'{escapedDocType}'" : "NULL")},
                      '{metadataJson}', NOW(), NOW())";
 
+            _logger?.LogDebug("Executing SQL: INSERT with DocId='{DocId}'", doltDoc.DocId);
             await _dolt.ExecuteAsync(sql);
             
             // Record in sync log
@@ -416,8 +428,24 @@ namespace DMMS.Services
         /// </summary>
         private async Task<List<ChromaDocument>> GetAllChromaDocumentsAsync(string collectionName)
         {
+            _logger?.LogInformation("Getting all documents from ChromaDB collection {Collection}", collectionName);
             var results = await _chroma.GetDocumentsAsync(collectionName);
-            return ConvertQueryResultsToDocuments(results, collectionName);
+            
+            _logger?.LogInformation("ChromaDB GetDocumentsAsync returned: {Results}", 
+                results != null ? "non-null result" : "null result");
+            
+            if (results != null)
+            {
+                var resultsDict = results as Dictionary<string, object> ?? new Dictionary<string, object>();
+                var ids = (resultsDict.GetValueOrDefault("ids") as List<object>) ?? new List<object>();
+                _logger?.LogInformation("ChromaDB returned {Count} document IDs: {Ids}", 
+                    ids.Count, string.Join(", ", ids));
+            }
+            
+            var documents = ConvertQueryResultsToDocuments(results, collectionName);
+            _logger?.LogInformation("ConvertQueryResultsToDocuments returned {Count} documents", documents.Count);
+            
+            return documents;
         }
 
         /// <summary>
@@ -430,6 +458,7 @@ namespace DMMS.Services
             
             if (results == null)
             {
+                _logger?.LogWarning("ConvertQueryResultsToDocuments: results is null");
                 return new List<ChromaDocument>();
             }
 
@@ -438,13 +467,50 @@ namespace DMMS.Services
             var docs = (resultsDict.GetValueOrDefault("documents") as List<object>) ?? new List<object>();
             var metadatas = (resultsDict.GetValueOrDefault("metadatas") as List<object>) ?? new List<object>();
             
+            // Detect and fix ID/document content swap issue
+            // If the first ID looks like document content (long text), swap the collections
+            if (ids.Count > 0 && docs.Count > 0)
+            {
+                var firstId = ids[0]?.ToString() ?? "";
+                var firstDoc = docs[0]?.ToString() ?? "";
+                
+                // If ID is very long (>64 chars) and looks like content, but the document is short and looks like an ID, swap them
+                if (firstId.Length > 64 && firstDoc.Length <= 64 && 
+                    (firstId.Contains("\n") || firstId.Contains(" ")) && 
+                    !firstDoc.Contains("\n") && !firstDoc.Contains(" "))
+                {
+                    _logger?.LogWarning("Detected ID/document content swap - correcting data order");
+                    (ids, docs) = (docs, ids); // Swap the collections
+                }
+            }
+            
+            _logger?.LogInformation("ConvertQueryResultsToDocuments: Processing {IdsCount} IDs, {DocsCount} docs, {MetasCount} metadatas",
+                ids.Count, docs.Count, metadatas.Count);
+            
             for (int i = 0; i < ids.Count; i++)
             {
                 var chunkId = ids[i]?.ToString() ?? "";
                 var content = docs[i]?.ToString() ?? "";
                 var metadata = metadatas[i] as Dictionary<string, object> ?? new Dictionary<string, object>();
                 
+                _logger?.LogInformation("Processing chunk {Index}: ID='{ChunkId}', ContentLength={ContentLength}", 
+                    i, chunkId, content.Length);
+                
                 var docId = ExtractDocIdFromChunkId(chunkId);
+                _logger?.LogInformation("Extracted docId '{DocId}' from chunkId '{ChunkId}'", docId, chunkId);
+                
+                // Check if this is a V1/direct document (no chunking metadata)
+                // If there's no "source_id" metadata, this document was added directly to ChromaDB
+                if (!metadata.ContainsKey("source_id") && !metadata.ContainsKey("chunk_index"))
+                {
+                    _logger?.LogInformation("Document '{ChunkId}' appears to be a direct ChromaDB document (no V2 chunking metadata)", chunkId);
+                    
+                    // For direct documents, treat the chunkId as the actual docId and add source_id metadata
+                    metadata["source_id"] = chunkId;
+                    metadata["chunk_index"] = 0;
+                    metadata["total_chunks"] = 1;
+                    docId = chunkId; // Use the actual ID as the document ID
+                }
                 
                 if (!documents.ContainsKey(docId))
                 {
@@ -458,6 +524,8 @@ namespace DMMS.Services
                 ));
             }
 
+            _logger?.LogInformation("ConvertQueryResultsToDocuments: Grouped into {DocumentCount} documents", documents.Count);
+
             var chromaDocuments = new List<ChromaDocument>();
             
             foreach (var kvp in documents)
@@ -465,11 +533,18 @@ namespace DMMS.Services
                 var docId = kvp.Key;
                 var chunks = kvp.Value;
                 
+                _logger?.LogDebug("Processing document '{DocId}' with {ChunkCount} chunks", docId, chunks.Count);
+                
                 var reassembledDoc = DocumentConverterUtilityV2.ConvertChromaToDolt(chunks);
                 
                 if (reassembledDoc != null)
                 {
+                    _logger?.LogInformation("Successfully reassembled document: Original docId='{OriginalDocId}', Reassembled DocId='{ReassembledDocId}', ContentLength={ContentLength}", 
+                        docId, reassembledDoc.DocId, reassembledDoc.Content.Length);
                     var firstChunkMeta = chunks[0].Metadata;
+                    
+                    _logger?.LogInformation("Creating ChromaDocument with DocId='{DocId}', ContentLength={ContentLength}", 
+                        docId, reassembledDoc.Content.Length);
                     
                     chromaDocuments.Add(new ChromaDocument(
                         DocId: docId,
@@ -480,8 +555,13 @@ namespace DMMS.Services
                         Chunks: chunks.Cast<dynamic>().ToList()
                     ));
                 }
+                else
+                {
+                    _logger?.LogWarning("Failed to reassemble document '{DocId}' - ConvertChromaToDolt returned null", docId);
+                }
             }
             
+            _logger?.LogInformation("ConvertQueryResultsToDocuments: Final result has {ChromaDocCount} documents", chromaDocuments.Count);
             return chromaDocuments;
         }
 

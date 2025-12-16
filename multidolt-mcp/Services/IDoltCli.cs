@@ -10,6 +10,12 @@ namespace DMMS.Services
         // ==================== Repository Management ====================
         
         /// <summary>
+        /// Check if a Dolt repository is initialized in the configured repository path
+        /// </summary>
+        /// <returns>True if repository exists and is initialized, false otherwise</returns>
+        Task<bool> IsInitializedAsync();
+        
+        /// <summary>
         /// Initialize a new Dolt repository in the configured repository path
         /// </summary>
         /// <returns>Command result indicating success/failure and any output messages</returns>

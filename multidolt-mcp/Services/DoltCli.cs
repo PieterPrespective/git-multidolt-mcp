@@ -105,6 +105,27 @@ namespace DMMS.Services
 
         // ==================== Repository Management ====================
 
+        public async Task<bool> IsInitializedAsync()
+        {
+            try
+            {
+                // Check if .dolt directory exists in the repository path
+                var doltDir = Path.Combine(_repositoryPath, ".dolt");
+                if (!Directory.Exists(doltDir))
+                {
+                    return false;
+                }
+
+                // Try to execute a simple dolt command to verify the repository is valid
+                var result = await ExecuteDoltCommandAsync("status");
+                return result.Success;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public async Task<DoltCommandResult> InitAsync()
         {
             return await ExecuteDoltCommandAsync("init");

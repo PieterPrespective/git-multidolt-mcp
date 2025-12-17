@@ -75,11 +75,20 @@ public class DoltPushTool
             var targetRemote = remotes?.FirstOrDefault(r => r.Name == remote);
             if (targetRemote == null)
             {
+                // Enhanced error reporting with diagnostic information
+                var availableRemotes = remotes?.Select(r => r.Name).ToList() ?? new List<string>();
+                var diagnosticMessage = availableRemotes.Any() 
+                    ? $"Remote '{remote}' not found. Available remotes: {string.Join(", ", availableRemotes)}"
+                    : $"Remote '{remote}' not found. No remotes are currently configured.";
+
+                _logger.LogWarning("[DoltPushTool] {DiagnosticMessage}", diagnosticMessage);
+
                 return new
                 {
                     success = false,
                     error = "REMOTE_NOT_FOUND",
-                    message = $"Remote '{remote}' not configured"
+                    message = diagnosticMessage,
+                    availableRemotes = availableRemotes
                 };
             }
 

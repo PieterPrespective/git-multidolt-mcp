@@ -452,24 +452,74 @@ namespace DMMS.Services
         /// <summary>
         /// Implementation Note: Parses 'dolt remote -v' output and deduplicates fetch/push entries
         /// by keeping only one entry per remote name.
+        /// Enhanced parsing supports both TAB and space separation for maximum compatibility.
         /// </summary>
         public async Task<IEnumerable<RemoteInfo>> ListRemotesAsync()
         {
             var result = await ExecuteDoltCommandAsync("remote", "-v");
             if (!result.Success)
+            {
+                if (_debugLogging)
+                {
+                    _logger.LogWarning("[DoltCli.ListRemotesAsync] Command failed: {Error}", result.Error);
+                }
                 return Enumerable.Empty<RemoteInfo>();
+            }
+
+            if (_debugLogging)
+            {
+                _logger.LogDebug("[DoltCli.ListRemotesAsync] Raw output: '{Output}'", result.Output);
+            }
 
             var remotes = new Dictionary<string, string>();
-            foreach (var line in result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            var lines = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (var line in lines)
             {
-                var parts = line.Split('\t');
-                if (parts.Length >= 2)
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                try
                 {
-                    var name = parts[0];
-                    var urlParts = parts[1].Split(' ');
-                    var url = urlParts[0];
-                    remotes[name] = url; // De-duplicate fetch/push entries
+                    // Enhanced parsing: handle both TAB and multiple spaces using regex split
+                    var parts = Regex.Split(line.Trim(), @"\s+", RegexOptions.None, TimeSpan.FromSeconds(1));
+                    if (parts.Length >= 2)
+                    {
+                        var name = parts[0];
+                        var urlWithDirection = parts[1];
+                        
+                        // Extract URL (remove direction like "(fetch)" or "(push)")
+                        var url = urlWithDirection.Split(' ')[0];
+                        
+                        // Validate URL format
+                        if (!string.IsNullOrEmpty(url) && !string.IsNullOrEmpty(name))
+                        {
+                            remotes[name] = url; // De-duplicate fetch/push entries
+                        }
+                        else if (_debugLogging)
+                        {
+                            _logger.LogWarning("[DoltCli.ListRemotesAsync] Skipped invalid entry - name: '{Name}', url: '{Url}'", name, url);
+                        }
+                    }
+                    else if (_debugLogging)
+                    {
+                        _logger.LogWarning("[DoltCli.ListRemotesAsync] Skipped malformed line: '{Line}' (only {Count} parts)", line, parts.Length);
+                    }
                 }
+                catch (Exception ex) when (ex is RegexMatchTimeoutException || ex is ArgumentException)
+                {
+                    if (_debugLogging)
+                    {
+                        _logger.LogWarning(ex, "[DoltCli.ListRemotesAsync] Failed to parse line: '{Line}'", line);
+                    }
+                    // Continue processing other lines
+                }
+            }
+
+            if (_debugLogging)
+            {
+                _logger.LogDebug("[DoltCli.ListRemotesAsync] Found {Count} remotes: {RemoteNames}", 
+                    remotes.Count, string.Join(", ", remotes.Keys));
             }
 
             return remotes.Select(kvp => new RemoteInfo(kvp.Key, kvp.Value));

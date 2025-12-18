@@ -333,9 +333,16 @@ namespace DMMS.Services
         /// <returns>List of collection names that exist in the documents table</returns>
         public async Task<List<string>> GetAvailableCollectionNamesAsync()
         {
-            _logger?.LogDebug("Getting available collection names from Dolt database");
+            _logger?.LogInformation("PP13-49: GetAvailableCollectionNamesAsync method ENTRY - This confirms enhanced code is deployed");
+            _logger?.LogInformation("PP13-49: DoltCli instance: {DoltInstance}, Logger: {Logger}", 
+                _dolt?.GetType().FullName ?? "NULL", 
+                _logger?.GetType().FullName ?? "NULL");
+            _logger?.LogInformation("GetAvailableCollectionNamesAsync: Starting collection discovery");
 
-            var sql = @"
+            var collections = new List<string>();
+
+            // First try: Query documents table for actual collection names
+            var documentsSql = @"
                 SELECT DISTINCT collection_name
                 FROM documents
                 WHERE collection_name IS NOT NULL AND collection_name != ''
@@ -343,27 +350,119 @@ namespace DMMS.Services
 
             try
             {
-                var results = await _dolt.QueryAsync<dynamic>(sql);
-                var collections = new List<string>();
+                _logger?.LogInformation("PP13-49: About to execute SQL on documents table");
+                _logger?.LogInformation("GetAvailableCollectionNamesAsync: Querying documents table with SQL: {Sql}", documentsSql);
+                
+                var results = await _dolt.QueryAsync<dynamic>(documentsSql);
+                
+                _logger?.LogInformation("PP13-49: SQL execution completed successfully");
+                _logger?.LogInformation("GetAvailableCollectionNamesAsync: Query returned {Count} rows", results?.Count() ?? 0);
+                
+                if (results != null)
+                {
+                    _logger?.LogInformation("PP13-49: Results object type: {Type}", results.GetType().FullName);
+                }
+
+                _logger?.LogInformation("PP13-49: Starting to iterate through {Count} result rows", results?.Count() ?? 0);
+                
+                foreach (var row in results)
+                {
+                    _logger?.LogInformation("PP13-49: Processing row: {Row}", (object)(row?.ToString() ?? "NULL"));
+                    
+                    if (row?.collection_name != null)
+                    {
+                        var collectionName = row.collection_name.ToString();
+                        collections.Add(collectionName);
+                        _logger?.LogInformation("PP13-49: Successfully extracted collection name: {Collection}", (object)collectionName);
+                        _logger?.LogInformation("GetAvailableCollectionNamesAsync: Found collection from documents: {Collection}", (object)collectionName);
+                    }
+                    else
+                    {
+                        _logger?.LogWarning("PP13-49: Row has null collection_name: {Row}", (object)(row?.ToString() ?? "NULL"));
+                    }
+                }
+
+                if (collections.Any())
+                {
+                    _logger?.LogInformation("GetAvailableCollectionNamesAsync: Successfully found {Count} collections from documents table: {Collections}", 
+                        collections.Count, string.Join(", ", collections));
+                    return collections;
+                }
+                else
+                {
+                    _logger?.LogWarning("GetAvailableCollectionNamesAsync: No collections found in documents table, trying collections table");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "PP13-49: EXCEPTION in documents table query - Type: {ExceptionType}, Message: {Message}", ex.GetType().FullName, ex.Message);
+                _logger?.LogWarning(ex, "GetAvailableCollectionNamesAsync: Failed to query documents table: {Message}", ex.Message);
+            }
+
+            // Second try: Query collections table directly
+            var collectionsSql = @"
+                SELECT DISTINCT collection_name
+                FROM collections
+                WHERE collection_name IS NOT NULL AND collection_name != ''
+                ORDER BY collection_name";
+
+            try
+            {
+                _logger?.LogInformation("GetAvailableCollectionNamesAsync: Querying collections table with SQL: {Sql}", collectionsSql);
+                var results = await _dolt.QueryAsync<dynamic>(collectionsSql);
+                _logger?.LogInformation("GetAvailableCollectionNamesAsync: Collections table query returned {Count} rows", results?.Count() ?? 0);
 
                 foreach (var row in results)
                 {
                     if (row?.collection_name != null)
                     {
-                        collections.Add(row.collection_name.ToString());
+                        var collectionName = row.collection_name.ToString();
+                        collections.Add(collectionName);
+                        _logger?.LogInformation("GetAvailableCollectionNamesAsync: Found collection from collections table: {Collection}", (object)collectionName);
                     }
                 }
 
-                _logger?.LogDebug("Found {Count} collections in Dolt database: {Collections}", 
-                    collections.Count, string.Join(", ", collections));
-
-                return collections;
+                if (collections.Any())
+                {
+                    _logger?.LogInformation("GetAvailableCollectionNamesAsync: Successfully found {Count} collections from collections table: {Collections}", 
+                        collections.Count, string.Join(", ", collections));
+                    return collections;
+                }
+                else
+                {
+                    _logger?.LogWarning("GetAvailableCollectionNamesAsync: No collections found in collections table either");
+                }
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Failed to get collection names from Dolt, likely empty repository");
-                return new List<string>();
+                _logger?.LogWarning(ex, "GetAvailableCollectionNamesAsync: Failed to query collections table: {Message}", ex.Message);
             }
+
+            // Third try: Check what tables actually exist
+            try
+            {
+                _logger?.LogInformation("GetAvailableCollectionNamesAsync: Checking what tables exist in database");
+                var showTablesSql = "SHOW TABLES";
+                var tableResults = await _dolt.QueryAsync<dynamic>(showTablesSql);
+                _logger?.LogInformation("GetAvailableCollectionNamesAsync: Found {Count} tables in database", tableResults?.Count() ?? 0);
+                
+                foreach (var tableRow in tableResults)
+                {
+                    var tableName = tableRow?.Tables_in_dolt_repo_10?.ToString() ?? 
+                                   tableRow?.Tables_in_dolt_repo?.ToString() ?? 
+                                   tableRow?.Table?.ToString() ??
+                                   tableRow?.GetType().GetProperties().FirstOrDefault()?.GetValue(tableRow)?.ToString();
+                    _logger?.LogInformation("GetAvailableCollectionNamesAsync: Found table: {Table}", (object)(tableName ?? "unknown"));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "GetAvailableCollectionNamesAsync: Failed to show tables: {Message}", ex.Message);
+            }
+
+            _logger?.LogError("PP13-49: FINAL FALLBACK - No collections found in any table, returning empty list");
+            _logger?.LogWarning("GetAvailableCollectionNamesAsync: No collections found in any table, returning empty list");
+            return new List<string>();
         }
 
         /// <summary>

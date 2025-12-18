@@ -586,7 +586,15 @@ namespace DMMS.Services
                 // If no collection name provided, sync all collections found in Dolt database
                 if (collectionName == null)
                 {
+                    _logger.LogInformation("PP13-49: About to call GetAvailableCollectionNamesAsync from SyncManagerV2");
+                    _logger.LogInformation("PP13-49: DeltaDetector instance type: {Type}", _deltaDetector?.GetType().FullName ?? "NULL");
+                    
                     var doltCollections = await _deltaDetector.GetAvailableCollectionNamesAsync();
+                    
+                    _logger.LogInformation("PP13-49: GetAvailableCollectionNamesAsync returned {Count} collections: [{Collections}]", 
+                        doltCollections?.Count ?? 0, 
+                        doltCollections != null ? string.Join(", ", doltCollections) : "NULL");
+                    
                     if (doltCollections.Any())
                     {
                         _logger.LogInformation("Found {Count} collections in Dolt database, syncing all: {Collections}", 

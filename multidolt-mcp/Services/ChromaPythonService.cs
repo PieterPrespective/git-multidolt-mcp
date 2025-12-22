@@ -335,7 +335,6 @@ public class ChromaPythonService : IChromaDbService, IDisposable
             }
         }
 
-
         return await PythonContext.ExecuteAsync(() =>
         {
             dynamic client = ChromaClientPool.GetClient(_clientId);
@@ -349,7 +348,7 @@ public class ChromaPythonService : IChromaDbService, IDisposable
                 _logger.LogError($"Failed to get or create collection '{collectionName}': {ex.Message}");
                 return false;
             }
-
+            
             // Convert C# lists to Python lists
             PyObject pyIds = ConvertListToPyList(ids);
             PyObject pyDocuments = ConvertListToPyList(documents);
@@ -359,27 +358,44 @@ public class ChromaPythonService : IChromaDbService, IDisposable
             {
                 pyMetadatas = ConvertMetadatasToPyList(metadatas);
             }
-
+            
             // Add documents to collection
             if (pyMetadatas != null)
             {
-                collection.add(
+                try
+                {
+                    collection.add(
                     ids: pyIds,
                     documents: pyDocuments,
                     metadatas: pyMetadatas
                 );
+                }
+                catch (PythonException ex)
+                {
+                    _logger.LogError($"Failed to get or create collection '{collectionName}': {ex.Message}");
+                    return false;
+                }
             }
             else
             {
-                collection.add(
+                try
+                {
+                    collection.add(
                     ids: pyIds,
                     documents: pyDocuments
                 );
+                }
+                catch (PythonException ex)
+                {
+                    _logger.LogError($"Failed to get or create collection '{collectionName}': {ex.Message}");
+                    return false;
+                }
             }
 
             _logger.LogInformation($"Added {documents.Count} documents to collection '{collectionName}'");
             return true;
         }, timeoutMs: 60000, operationName: $"AddDocuments_{collectionName}");
+        
     }
 
     /// <summary>
@@ -867,6 +883,29 @@ public class ChromaPythonService : IChromaDbService, IDisposable
     /// Gets the client ID for this service instance
     /// </summary>
     public string GetClientId() => _clientId;
+
+    /// <summary>
+    /// Forces immediate disposal for testing scenarios (bypasses grace period)
+    /// </summary>
+    public async Task DisposeImmediatelyAsync()
+    {
+        if (!_disposed)
+        {
+            _logger?.LogInformation("Force disposing ChromaPythonService immediately with client ID: {ClientId}", _clientId);
+            
+            // Use immediate disposal to bypass the 5-second delay
+            await PythonContext.ExecuteAsync(() =>
+            {
+                ChromaClientPool.DisposeClientImmediately(_clientId);
+                return true;
+            }, timeoutMs: 10000, operationName: "ImmediateClientDisposal");
+            
+            _clientInitialized = false;
+            _disposed = true;
+            
+            _logger?.LogInformation("ChromaPythonService immediately disposed successfully");
+        }
+    }
 
     /// <summary>
     /// Disposes of the Python resources

@@ -37,34 +37,36 @@ namespace DMMS.Services
         /// <returns>Summary of new, modified, and deleted documents</returns>
         public async Task<LocalChanges> DetectLocalChangesAsync(string collectionName)
         {
-            _logger?.LogDebug("Detecting local changes in ChromaDB collection {Collection}", collectionName);
+            _logger?.LogInformation("===== DetectLocalChangesAsync STARTING for collection {Collection} =====", collectionName);
 
             try
             {
                 // Get documents flagged as local changes
+                _logger?.LogInformation("STEP 1: Checking for documents flagged with is_local_change=true");
                 var flaggedChanges = await GetFlaggedLocalChangesAsync(collectionName);
-                _logger?.LogInformation("GetFlaggedLocalChangesAsync returned {Count} flagged changes", flaggedChanges.Count);
+                _logger?.LogInformation("STEP 1 RESULT: GetFlaggedLocalChangesAsync returned {Count} flagged changes", flaggedChanges.Count);
                 
                 // FALLBACK: If no flagged changes found, but we suspect there should be changes,
                 // compare all ChromaDB documents with Dolt to find new documents
                 if (flaggedChanges.Count == 0)
                 {
-                    _logger?.LogInformation("No flagged local changes found, checking for new documents in ChromaDB");
+                    _logger?.LogInformation("STEP 2: No flagged local changes found, activating FALLBACK mechanism");
+                    _logger?.LogInformation("STEP 2: Checking for ChromaDB documents not present in Dolt");
                     var fallbackDocs = await FindChromaOnlyDocumentsAsync(collectionName);
-                    _logger?.LogInformation("FindChromaOnlyDocumentsAsync returned {Count} ChromaDB-only documents", fallbackDocs.Count);
+                    _logger?.LogInformation("STEP 2 RESULT: FindChromaOnlyDocumentsAsync returned {Count} ChromaDB-only documents", fallbackDocs.Count);
                     if (fallbackDocs.Count > 0)
                     {
-                        _logger?.LogInformation("Found {Count} documents in ChromaDB that don't exist in Dolt - treating as local changes", fallbackDocs.Count);
+                        _logger?.LogInformation("FALLBACK SUCCESS: Found {Count} documents in ChromaDB that don't exist in Dolt - treating as local changes", fallbackDocs.Count);
                         flaggedChanges = fallbackDocs;
                     }
                     else
                     {
-                        _logger?.LogInformation("No ChromaDB-only documents found either");
+                        _logger?.LogInformation("FALLBACK RESULT: No ChromaDB-only documents found - no local changes detected");
                     }
                 }
                 else
                 {
-                    _logger?.LogInformation("Using {Count} flagged changes found by GetFlaggedLocalChangesAsync", flaggedChanges.Count);
+                    _logger?.LogInformation("STEP 2: SKIPPING fallback - using {Count} flagged changes found by GetFlaggedLocalChangesAsync", flaggedChanges.Count);
                 }
                 
                 // Early exit if no flagged changes and no fallback documents found
@@ -242,22 +244,52 @@ namespace DMMS.Services
         /// </summary>
         public async Task<List<ChromaDocument>> FindChromaOnlyDocumentsAsync(string collectionName)
         {
-            _logger?.LogDebug("Finding ChromaDB-only documents in collection {Collection}", collectionName);
+            _logger?.LogInformation("FindChromaOnlyDocumentsAsync STARTING for collection {Collection}", collectionName);
 
             try
             {
                 // Get all documents from ChromaDB
+                _logger?.LogInformation("Getting all ChromaDB documents for collection {Collection}", collectionName);
                 var chromaDocs = await GetAllChromaDocumentsAsync(collectionName);
+                _logger?.LogInformation("Retrieved {Count} documents from ChromaDB for collection {Collection}", chromaDocs.Count, collectionName);
+                
+                // Log first few document IDs for debugging
+                if (chromaDocs.Count > 0)
+                {
+                    var firstFewIds = chromaDocs.Take(3).Select(d => d.DocId).ToList();
+                    _logger?.LogInformation("First few ChromaDB document IDs: {Ids}", string.Join(", ", firstFewIds));
+                }
                 
                 // Get all document IDs from Dolt
+                _logger?.LogInformation("Getting all Dolt document IDs for collection {Collection}", collectionName);
                 var doltIds = await GetDoltDocumentIdsAsync(collectionName);
+                _logger?.LogInformation("Retrieved {Count} document IDs from Dolt for collection {Collection}", doltIds.Count, collectionName);
+                
+                // Log first few document IDs from Dolt for debugging
+                if (doltIds.Count > 0)
+                {
+                    var firstFewDoltIds = doltIds.Take(3).ToList();
+                    _logger?.LogInformation("First few Dolt document IDs: {Ids}", string.Join(", ", firstFewDoltIds));
+                }
                 
                 // Find documents that don't exist in Dolt
                 var chromaOnly = chromaDocs
                     .Where(c => !doltIds.Contains(c.DocId))
                     .ToList();
                 
-                _logger?.LogDebug("Found {Count} documents only in ChromaDB", chromaOnly.Count);
+                _logger?.LogInformation("FindChromaOnlyDocumentsAsync RESULT: Found {Count} documents only in ChromaDB for collection {Collection}", chromaOnly.Count, collectionName);
+                
+                // Log the ChromaDB-only document IDs
+                if (chromaOnly.Count > 0)
+                {
+                    var chromaOnlyIds = chromaOnly.Select(d => d.DocId).ToList();
+                    _logger?.LogInformation("ChromaDB-only document IDs: {Ids}", string.Join(", ", chromaOnlyIds));
+                }
+                else
+                {
+                    _logger?.LogInformation("No ChromaDB-only documents found - all ChromaDB documents also exist in Dolt");
+                }
+                
                 return chromaOnly;
             }
             catch (Exception ex)

@@ -103,6 +103,24 @@ public class ChromaAddDocumentsTool
                 };
             }
 
+            // PP13-51 FIX: Ensure all documents added via MCP tool are marked as local changes
+            // This allows them to be detected during commit operations
+            if (metadatas == null)
+            {
+                metadatas = new List<Dictionary<string, object>>();
+                for (int i = 0; i < documents.Count; i++)
+                {
+                    metadatas.Add(new Dictionary<string, object>());
+                }
+            }
+            
+            // Add is_local_change=true to all metadata entries
+            foreach (var metadata in metadatas)
+            {
+                metadata["is_local_change"] = true;
+                _logger.LogInformation($"Setting is_local_change=true for document added via MCP tool");
+            }
+
             var result = await _chromaService.AddDocumentsAsync(collectionName, documents, ids, metadatas);
 
             return new

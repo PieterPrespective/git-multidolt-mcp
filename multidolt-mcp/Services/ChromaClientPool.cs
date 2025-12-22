@@ -178,6 +178,41 @@ internal static class ChromaClientPool
     }
 
     /// <summary>
+    /// Disposes a specific client immediately for testing scenarios
+    /// This bypasses the 5-second grace period for immediate cleanup
+    /// Must be called from Python thread  
+    /// </summary>
+    public static void DisposeClientImmediately(string clientId)
+    {
+        if (_clients.TryGetValue(clientId, out var clientInfo))
+        {
+            clientInfo.IsDisposed = true;
+            _logger?.LogInformation("Disposed ChromaDB client {ClientId} immediately (usage: {Usage})", clientId, clientInfo.UsageCount);
+            
+            // Force Python garbage collection to release file handles
+            try
+            {
+                using (Py.GIL())
+                {
+                    using (dynamic gc = Py.Import("gc"))
+                    {
+                        gc.collect();
+                        _logger?.LogDebug("Forced Python garbage collection for client {ClientId}", clientId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to force Python garbage collection for client {ClientId}", clientId);
+            }
+            
+            // Remove immediately
+            _clients.TryRemove(clientId, out _);
+            _logger?.LogDebug("Removed client {ClientId} from pool immediately", clientId);
+        }
+    }
+
+    /// <summary>
     /// Gets information about all active clients
     /// </summary>
     public static Dictionary<string, object> GetPoolStatus()

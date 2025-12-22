@@ -426,9 +426,13 @@ namespace DMMS.Services
                 var parts = line.Split(' ', 2);
                 if (parts.Length >= 2)
                 {
+                    // Strip ANSI color codes and extract just the commit message
+                    var messageWithAnsi = parts[1];
+                    var cleanMessage = StripAnsiColorCodes(messageWithAnsi);
+                    
                     commits.Add(new CommitInfo(
                         parts[0],
-                        parts[1],
+                        cleanMessage,
                         "", // Author not available in --oneline format
                         DateTime.Now // Date not available in --oneline format
                     ));
@@ -955,6 +959,31 @@ namespace DMMS.Services
         public async Task<DoltCommandResult> ExecuteRawCommandAsync(params string[] args)
         {
             return await ExecuteDoltCommandAsync(args);
+        }
+
+        /// <summary>
+        /// Strips ANSI color codes from git output and extracts clean commit message
+        /// </summary>
+        /// <param name="input">Raw git output with ANSI codes</param>
+        /// <returns>Clean commit message without ANSI codes or branch info</returns>
+        private static string StripAnsiColorCodes(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return input;
+
+            // Remove ANSI color codes (pattern: \[\d+(;\d+)*m)
+            var ansiPattern = @"\x1b\[\d+(;\d+)*m";
+            var withoutAnsi = System.Text.RegularExpressions.Regex.Replace(input, ansiPattern, string.Empty);
+            
+            // Also handle the bracket-only format [0m[33m etc
+            var bracketPattern = @"\[\d+(;\d+)*m";
+            withoutAnsi = System.Text.RegularExpressions.Regex.Replace(withoutAnsi, bracketPattern, string.Empty);
+            
+            // Remove git branch information in parentheses like "(HEAD -> main)"
+            var branchPattern = @"\([^)]*\)\s*";
+            withoutAnsi = System.Text.RegularExpressions.Regex.Replace(withoutAnsi, branchPattern, string.Empty);
+            
+            return withoutAnsi.Trim();
         }
     }
 }

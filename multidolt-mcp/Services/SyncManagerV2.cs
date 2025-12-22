@@ -134,7 +134,14 @@ namespace DMMS.Services
                 if (collections.Count == 1)
                 {
                     _logger.LogInformation("Single collection found: {Collection}", collections[0]);
-                    return await _chromaToDoltDetector.DetectLocalChangesAsync(collections[0]);
+                    _logger.LogInformation("GetLocalChangesAsync: Using detector instance {DetectorHash} for collection {Collection}", 
+                        _chromaToDoltDetector.GetHashCode(), collections[0]);
+                    
+                    var singleResult = await _chromaToDoltDetector.DetectLocalChangesAsync(collections[0]);
+                    _logger.LogInformation("GetLocalChangesAsync: Detection completed for {Collection} - found {TotalChanges} changes", 
+                        collections[0], singleResult.TotalChanges);
+                    
+                    return singleResult;
                 }
                 
                 // Multiple collections - use async batching to prevent Python.NET queue saturation
@@ -228,21 +235,77 @@ namespace DMMS.Services
                 // Auto-stage local changes from ChromaDB if requested
                 if (autoStageFromChroma)
                 {
-                    var collections = await _chromaService.ListCollectionsAsync();
-                    var currentCollection = collections.FirstOrDefault() ?? "default";
+                    // PP13-56-C1: Fix collection selection logic - identify collections with actual changes
+                    var allCollections = await _chromaService.ListCollectionsAsync();
+                    _logger.LogInformation("ProcessCommitAsync: Found {Count} collections: [{Collections}]", 
+                        allCollections.Count, string.Join(", ", allCollections));
                     
-                    var stageResult = await _chromaToDoltSyncer.StageLocalChangesAsync(currentCollection);
+                    // Detect changes across all collections to identify which have local changes
+                    var allLocalChanges = await GetLocalChangesAsync();
                     
-                    result.StagedFromChroma = stageResult.TotalStaged;
-                    
-                    if (stageResult.Status == StageStatus.Failed)
+                    if (!allLocalChanges.HasChanges)
                     {
-                        result.Status = SyncStatusV2.Failed;
-                        result.ErrorMessage = stageResult.ErrorMessage;
-                        return result;
+                        _logger.LogInformation("ProcessCommitAsync: No local changes found across any collections");
+                        result.StagedFromChroma = 0;
                     }
-                    
-                    _logger.LogInformation("Staged {Count} changes from ChromaDB", stageResult.TotalStaged);
+                    else
+                    {
+                        _logger.LogInformation("ProcessCommitAsync: Found {TotalChanges} changes across all collections, identifying source collections", 
+                            allLocalChanges.TotalChanges);
+                        
+                        // Check each collection individually to find which ones have changes
+                        var collectionsWithChanges = new List<string>();
+                        
+                        foreach (var collectionName in allCollections)
+                        {
+                            var collectionChanges = await _chromaToDoltDetector.DetectLocalChangesAsync(collectionName);
+                            if (collectionChanges.HasChanges)
+                            {
+                                collectionsWithChanges.Add(collectionName);
+                                _logger.LogInformation("ProcessCommitAsync: Collection '{Collection}' has {Changes} changes", 
+                                    collectionName, collectionChanges.TotalChanges);
+                            }
+                            else
+                            {
+                                _logger.LogInformation("ProcessCommitAsync: Collection '{Collection}' has no changes", collectionName);
+                            }
+                        }
+                        
+                        if (!collectionsWithChanges.Any())
+                        {
+                            _logger.LogWarning("ProcessCommitAsync: No collections with changes found despite total changes detected. Using fallback to first collection.");
+                            var fallbackCollection = allCollections.FirstOrDefault() ?? "default";
+                            collectionsWithChanges.Add(fallbackCollection);
+                        }
+                        
+                        // Process each collection with changes
+                        int totalStaged = 0;
+                        foreach (var collectionWithChanges in collectionsWithChanges)
+                        {
+                            _logger.LogInformation("ProcessCommitAsync: Processing collection '{Collection}' with changes", collectionWithChanges);
+                            
+                            var localChanges = await _chromaToDoltDetector.DetectLocalChangesAsync(collectionWithChanges);
+                            _logger.LogInformation("ProcessCommitAsync: Staging {TotalChanges} changes for collection {Collection}", 
+                                localChanges.TotalChanges, collectionWithChanges);
+                            
+                            var stageResult = await _chromaToDoltSyncer.StageLocalChangesAsync(collectionWithChanges, localChanges);
+                            
+                            if (stageResult.Status == StageStatus.Failed)
+                            {
+                                result.Status = SyncStatusV2.Failed;
+                                result.ErrorMessage = $"Failed to stage changes from collection '{collectionWithChanges}': {stageResult.ErrorMessage}";
+                                return result;
+                            }
+                            
+                            totalStaged += stageResult.TotalStaged;
+                            _logger.LogInformation("ProcessCommitAsync: Staged {Count} changes from collection '{Collection}'", 
+                                stageResult.TotalStaged, collectionWithChanges);
+                        }
+                        
+                        result.StagedFromChroma = totalStaged;
+                        _logger.LogInformation("ProcessCommitAsync: Total staged {Count} changes from {Collections} collections with changes", 
+                            totalStaged, collectionsWithChanges.Count);
+                    }
                 }
                 
                 // Stage any remaining Dolt changes
@@ -874,6 +937,22 @@ namespace DMMS.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to stage local changes");
+                return new StageResult(StageStatus.Failed, 0, 0, 0, ex.Message);
+            }
+        }
+
+        public async Task<StageResult> StageLocalChangesAsync(string collectionName, LocalChanges localChanges)
+        {
+            try
+            {
+                _logger.LogInformation("Staging pre-detected local changes from collection {Collection}", collectionName);
+                _logger.LogInformation("SyncManagerV2: Passing {TotalChanges} pre-detected changes to syncer", localChanges.TotalChanges);
+                
+                return await _chromaToDoltSyncer.StageLocalChangesAsync(collectionName, localChanges);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to stage pre-detected local changes");
                 return new StageResult(StageStatus.Failed, 0, 0, 0, ex.Message);
             }
         }

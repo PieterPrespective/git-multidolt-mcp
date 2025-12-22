@@ -98,101 +98,10 @@ public class DoltCloneTool
                 }
             }
 
-            // Pre-clone URL validation to detect invalid URLs early
-            _logger.LogInformation($"[DoltCloneTool.DoltClone] Performing pre-clone URL validation for: '{formattedUrl}'");
-            
-            // For DoltHub URLs, perform early validation by testing remote connectivity
-            if (formattedUrl.Contains("doltremoteapi.dolthub.com") || formattedUrl.Contains("dolthub.com"))
-            {
-                try
-                {
-                    // Create a temporary repository to test remote validity
-                    var tempTestDir = Path.Combine(Path.GetTempPath(), $"dolt_url_test_{Guid.NewGuid():N}");
-                    Directory.CreateDirectory(tempTestDir);
-                    
-                    try
-                    {
-                        var tempConfig = Options.Create(new DoltConfiguration
-                        {
-                            DoltExecutablePath = _doltConfig.DoltExecutablePath,
-                            RepositoryPath = tempTestDir,
-                            CommandTimeoutMs = 15000, // Shorter timeout for validation
-                            EnableDebugLogging = false
-                        });
-                        
-                        using var tempLoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Warning));
-                        var tempDoltCli = new DoltCli(tempConfig, tempLoggerFactory.CreateLogger<DoltCli>());
-                        
-                        // Initialize temporary repository
-                        var tempInitResult = await tempDoltCli.InitAsync();
-                        if (tempInitResult.Success)
-                        {
-                            // Test remote validity by trying to add it
-                            var tempRemoteResult = await tempDoltCli.AddRemoteAsync("test_origin", formattedUrl);
-                            
-                            if (!tempRemoteResult.Success && tempRemoteResult.Error != null)
-                            {
-                                // Check for invalid remote URL patterns
-                                bool isInvalidUrlError = tempRemoteResult.Error.Contains("do not exist", StringComparison.OrdinalIgnoreCase) ||
-                                                       tempRemoteResult.Error.Contains("Invalid repository ID", StringComparison.OrdinalIgnoreCase) ||
-                                                       tempRemoteResult.Error.Contains("repository not found", StringComparison.OrdinalIgnoreCase) ||
-                                                       tempRemoteResult.Error.Contains("authentication failed", StringComparison.OrdinalIgnoreCase) ||
-                                                       tempRemoteResult.Error.Contains("invalid remote", StringComparison.OrdinalIgnoreCase) ||
-                                                       tempRemoteResult.Error.Contains("could not connect", StringComparison.OrdinalIgnoreCase);
-                                
-                                if (isInvalidUrlError)
-                                {
-                                    _logger.LogError($"[DoltCloneTool.DoltClone] ❌ Pre-clone validation failed - invalid remote URL: {tempRemoteResult.Error}");
-                                    
-                                    // Return immediate error without attempting clone
-                                    return new
-                                    {
-                                        success = false,
-                                        error = "INVALID_REMOTE_URL",
-                                        message = $"Invalid remote URL detected during pre-clone validation: '{formattedUrl}'. {tempRemoteResult.Error}",
-                                        attempted_url = formattedUrl,
-                                        validation_error = tempRemoteResult.Error,
-                                        suggestion = formattedUrl.Contains("www.dolthub.com/repositories/") ? 
-                                            $"Try using the correct DoltHub URL format: 'https://doltremoteapi.dolthub.com/{ExtractUsernameAndRepo(formattedUrl)}' or shorthand '{ExtractUsernameAndRepo(formattedUrl)}'" :
-                                            "Please verify the remote URL format and ensure the repository exists and is accessible."
-                                    };
-                                }
-                            }
-                            
-                            _logger.LogInformation($"[DoltCloneTool.DoltClone] ✓ Pre-clone validation passed for URL: '{formattedUrl}'");
-                        }
-                        else
-                        {
-                            _logger.LogWarning($"[DoltCloneTool.DoltClone] Could not initialize temporary repository for URL validation: {tempInitResult.Error}");
-                            // Continue with clone attempt even if validation setup fails
-                        }
-                    }
-                    finally
-                    {
-                        // Clean up temporary directory
-                        try
-                        {
-                            if (Directory.Exists(tempTestDir))
-                            {
-                                Directory.Delete(tempTestDir, true);
-                            }
-                        }
-                        catch (Exception cleanupEx)
-                        {
-                            _logger.LogWarning(cleanupEx, $"[DoltCloneTool.DoltClone] Failed to clean up validation temp directory: {cleanupEx.Message}");
-                        }
-                    }
-                }
-                catch (Exception validationEx)
-                {
-                    _logger.LogWarning(validationEx, $"[DoltCloneTool.DoltClone] Pre-clone validation encountered an error: {validationEx.Message}");
-                    // Continue with clone attempt even if validation fails due to technical issues
-                }
-            }
-            else
-            {
-                _logger.LogInformation($"[DoltCloneTool.DoltClone] Skipping pre-clone validation for non-DoltHub URL: '{formattedUrl}'");
-            }
+            // PP13-56-C1: Removed pre-clone URL validation that creates temporary test directories
+            // This test code was running in production and causing file locking issues
+            // URL validation will now happen during actual clone operation
+            _logger.LogInformation($"[DoltCloneTool.DoltClone] Starting clone operation for: '{formattedUrl}'");
 
             // Clone the repository and check for success
             // IMPORTANT: Pass "." to clone into the current directory (_repositoryPath), not a subdirectory

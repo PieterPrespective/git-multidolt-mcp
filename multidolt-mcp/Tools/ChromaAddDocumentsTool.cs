@@ -60,7 +60,9 @@ public class ChromaAddDocumentsTool
                 };
             }
 
-            _logger.LogInformation($"Adding documents to collection '{collectionName}'");
+            // PP13-56-C1: Enhanced logging for audit and debugging purposes
+            _logger.LogInformation($"[ChromaAddDocumentsTool] User request: Adding {documentsJson?.Length ?? 0} chars of documents JSON and {idsJson?.Length ?? 0} chars of IDs JSON to collection '{collectionName}'");
+            _logger.LogInformation($"[ChromaAddDocumentsTool] Metadata provided: {!string.IsNullOrWhiteSpace(metadatasJson)}, metadata length: {metadatasJson?.Length ?? 0} chars");
 
             List<string> documents;
             List<string> ids;
@@ -74,6 +76,13 @@ public class ChromaAddDocumentsTool
                 if (!string.IsNullOrWhiteSpace(metadatasJson))
                 {
                     metadatas = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(metadatasJson);
+                }
+                
+                // PP13-56-C1: Log document details for debugging and audit
+                _logger.LogInformation($"[ChromaAddDocumentsTool] Parsed {documents.Count} documents and {ids.Count} IDs");
+                if (metadatas != null)
+                {
+                    _logger.LogInformation($"[ChromaAddDocumentsTool] Parsed {metadatas.Count} metadata entries");
                 }
             }
             catch (JsonException ex)
@@ -114,19 +123,51 @@ public class ChromaAddDocumentsTool
                 }
             }
             
-            // Add is_local_change=true to all metadata entries
-            foreach (var metadata in metadatas)
+            // PP13-56-C1: Add is_local_change=true to all metadata entries with enhanced logging
+            _logger.LogInformation($"[ChromaAddDocumentsTool] Processing {metadatas.Count} metadata entries for local change marking");
+            for (int i = 0; i < metadatas.Count; i++)
             {
+                var metadata = metadatas[i];
+                var documentId = i < ids.Count ? ids[i] : "unknown";
+                var contentLength = i < documents.Count ? documents[i].Length : 0;
+                
                 metadata["is_local_change"] = true;
-                _logger.LogInformation($"Setting is_local_change=true for document added via MCP tool");
+                
+                // Enhanced logging with document details
+                _logger.LogInformation($"[ChromaAddDocumentsTool] Document {i + 1}/{documents.Count}: ID='{documentId}', Content Length={contentLength} chars, Metadata Keys=[{string.Join(", ", metadata.Keys)}], is_local_change=true");
+                
+                // Log metadata content for debugging (but limit size for readability)
+                var metadataJson = JsonSerializer.Serialize(metadata);
+                var truncatedMetadata = metadataJson.Length > 200 ? metadataJson.Substring(0, 200) + "..." : metadataJson;
+                _logger.LogDebug($"[ChromaAddDocumentsTool] Document '{documentId}' metadata: {truncatedMetadata}");
             }
 
+            // PP13-56-C1: Log operation attempt and result
+            _logger.LogInformation($"[ChromaAddDocumentsTool] Attempting to add {documents.Count} documents to collection '{collectionName}' via ChromaDB service");
+            
+            var startTime = DateTime.UtcNow;
             var result = await _chromaService.AddDocumentsAsync(collectionName, documents, ids, metadatas);
+            var duration = DateTime.UtcNow - startTime;
+            
+            // Enhanced result logging
+            if (result)
+            {
+                _logger.LogInformation($"[ChromaAddDocumentsTool] ✓ Successfully added {documents.Count} documents to collection '{collectionName}' in {duration.TotalMilliseconds:F1}ms");
+                _logger.LogInformation($"[ChromaAddDocumentsTool] Document IDs added: [{string.Join(", ", ids.Take(10))}{(ids.Count > 10 ? $" and {ids.Count - 10} more..." : "")}]");
+            }
+            else
+            {
+                _logger.LogError($"[ChromaAddDocumentsTool] ❌ Failed to add {documents.Count} documents to collection '{collectionName}' after {duration.TotalMilliseconds:F1}ms");
+            }
 
             return new
             {
                 success = result,
-                message = result ? $"Successfully added {documents.Count} documents to collection '{collectionName}'" : "Failed to add documents"
+                message = result ? $"Successfully added {documents.Count} documents to collection '{collectionName}' in {duration.TotalMilliseconds:F1}ms" : "Failed to add documents",
+                document_count = documents.Count,
+                collection_name = collectionName,
+                duration_ms = duration.TotalMilliseconds,
+                document_ids = ids.Take(5).ToArray() // Include first 5 IDs in response
             };
         }
         catch (Exception ex)

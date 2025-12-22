@@ -45,9 +45,36 @@ namespace DMMS.Services
                 // Detect local changes
                 var localChanges = await _detector.DetectLocalChangesAsync(collectionName);
                 
+                _logger?.LogInformation("StageLocalChangesAsync: Detected {TotalChanges} changes for collection {Collection} (Detector instance: {DetectorHash})", 
+                    localChanges.TotalChanges, collectionName, _detector.GetHashCode());
+                
+                return await StageLocalChangesAsync(collectionName, localChanges);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to stage local changes from collection {Collection}", collectionName);
+                return new StageResult(StageStatus.Failed, 0, 0, 0);
+            }
+        }
+
+        /// <summary>
+        /// Stage pre-detected local changes from ChromaDB to Dolt (like git add .)
+        /// This overload eliminates redundant change detection and ensures consistency.
+        /// </summary>
+        /// <param name="collectionName">The collection with local changes</param>
+        /// <param name="localChanges">Pre-detected changes to stage</param>
+        /// <returns>Result indicating what was staged</returns>
+        public async Task<StageResult> StageLocalChangesAsync(string collectionName, LocalChanges localChanges)
+        {
+            _logger?.LogInformation("Staging pre-detected local changes from ChromaDB collection {Collection} to Dolt", collectionName);
+            _logger?.LogInformation("Pre-detected changes: {NewCount} new, {ModifiedCount} modified, {DeletedCount} deleted", 
+                localChanges.NewDocuments.Count, localChanges.ModifiedDocuments.Count, localChanges.DeletedDocuments.Count);
+
+            try
+            {
                 if (!localChanges.HasChanges)
                 {
-                    _logger?.LogInformation("No local changes to stage");
+                    _logger?.LogInformation("No pre-detected local changes to stage");
                     return new StageResult(StageStatus.NoChanges, 0, 0, 0);
                 }
 
@@ -117,7 +144,7 @@ namespace DMMS.Services
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Failed to stage local changes from collection {Collection}", collectionName);
+                _logger?.LogError(ex, "Failed to stage pre-detected local changes from collection {Collection}", collectionName);
                 return new StageResult(StageStatus.Failed, 0, 0, 0, ex.Message);
             }
         }

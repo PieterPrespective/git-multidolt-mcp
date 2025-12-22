@@ -131,6 +131,15 @@ namespace DMMS.Services
         /// <returns>Result indicating staged changes</returns>
         Task<StageResult> StageLocalChangesAsync(string collectionName);
         
+        /// <summary>
+        /// Stage pre-detected local changes from ChromaDB to Dolt (like git add .)
+        /// This overload eliminates redundant change detection and ensures consistency.
+        /// </summary>
+        /// <param name="collectionName">Collection with local changes to stage</param>
+        /// <param name="localChanges">Pre-detected changes to stage</param>
+        /// <returns>Result indicating staged changes</returns>
+        Task<StageResult> StageLocalChangesAsync(string collectionName, LocalChanges localChanges);
+        
         // ==================== Import/Export ====================
         
         /// <summary>

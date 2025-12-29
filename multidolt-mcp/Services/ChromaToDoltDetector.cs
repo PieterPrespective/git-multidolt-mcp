@@ -20,6 +20,7 @@ namespace DMMS.Services
         private readonly IChromaDbService _chroma;
         private readonly IDoltCli _dolt;
         private readonly IDeletionTracker _deletionTracker;
+        private readonly ICollectionChangeDetector? _collectionChangeDetector;
         private readonly DoltConfiguration _doltConfig;
         private readonly ILogger<ChromaToDoltDetector>? _logger;
 
@@ -28,13 +29,66 @@ namespace DMMS.Services
             IDoltCli dolt,
             IDeletionTracker deletionTracker,
             IOptions<DoltConfiguration> doltConfig,
-            ILogger<ChromaToDoltDetector>? logger = null)
+            ILogger<ChromaToDoltDetector>? logger = null,
+            ICollectionChangeDetector? collectionChangeDetector = null)
         {
             _chroma = chroma;
             _dolt = dolt;
             _deletionTracker = deletionTracker;
+            _collectionChangeDetector = collectionChangeDetector;
             _doltConfig = doltConfig.Value;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Detect all collection-level changes that need to be synchronized between ChromaDB and Dolt
+        /// </summary>
+        /// <returns>Summary of collection changes (deletions, renames, metadata updates)</returns>
+        public async Task<CollectionChanges> DetectCollectionChangesAsync()
+        {
+            _logger?.LogInformation("===== DetectCollectionChangesAsync STARTING =====");
+
+            try
+            {
+                if (_collectionChangeDetector == null)
+                {
+                    _logger?.LogWarning("Collection change detector not available - returning empty changes");
+                    return new CollectionChanges();
+                }
+
+                var changes = await _collectionChangeDetector.DetectCollectionChangesAsync();
+                _logger?.LogInformation("Detected {Total} collection changes: {Summary}",
+                    changes.TotalChanges, changes.GetSummary());
+
+                return changes;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to detect collection changes");
+                throw new Exception($"Failed to detect collection changes: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Check if there are any pending collection changes
+        /// </summary>
+        /// <returns>True if collection changes exist, false otherwise</returns>
+        public async Task<bool> HasPendingCollectionChangesAsync()
+        {
+            try
+            {
+                if (_collectionChangeDetector == null)
+                {
+                    return false;
+                }
+
+                return await _collectionChangeDetector.HasPendingCollectionChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Failed to check for pending collection changes");
+                return false;
+            }
         }
 
         /// <summary>

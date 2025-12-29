@@ -138,6 +138,12 @@ public class DoltCheckoutTool
                                 {
                                     attempted_changes = localChanges?.TotalChanges ?? 0,
                                     commit_message = commit_message
+                                },
+                                recovery_info = new
+                                {
+                                    can_rollback = false, // Changes were not committed, no rollback needed
+                                    original_branch = fromBranch ?? "unknown",
+                                    suggestion = "Check the error details and resolve sync issues before retrying"
                                 }
                             };
                         }

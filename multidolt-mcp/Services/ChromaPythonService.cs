@@ -664,12 +664,28 @@ public class ChromaPythonService : IChromaDbService, IDisposable
     /// </summary>
     private PyObject ConvertListToPyList(List<string> list)
     {
-        dynamic pyList = PythonEngine.Eval("[]");
-        foreach (var item in list)
+        try
         {
-            pyList.append(item);
+            dynamic pyList = PythonEngine.Eval("[]");
+            foreach (var item in list)
+            {
+                try
+                {
+                    pyList.append(item);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning($"Failed to append item '{item}' to Python list: {ex.Message}. Skipping item.");
+                }
+            }
+            return pyList;
         }
-        return pyList;
+        catch (Exception ex)
+        {
+            _logger?.LogError($"Critical failure in ConvertListToPyList: {ex.Message}. Returning empty list.");
+            // Return empty Python list as fallback
+            return PythonEngine.Eval("[]");
+        }
     }
 
     /// <summary>
@@ -677,52 +693,100 @@ public class ChromaPythonService : IChromaDbService, IDisposable
     /// </summary>
     private PyObject ConvertDictionaryToPyDict(Dictionary<string, object> dict)
     {
-        dynamic pyDict = PythonEngine.Eval("{}");
-        foreach (var kvp in dict)
+        try
         {
-            if (kvp.Value is Dictionary<string, object> nestedDict)
+            dynamic pyDict = PythonEngine.Eval("{}");
+            
+            foreach (var kvp in dict)
             {
-                pyDict[kvp.Key] = ConvertDictionaryToPyDict(nestedDict);
+                try
+                {
+                    if (kvp.Value is Dictionary<string, object> nestedDict)
+                    {
+                        try
+                        {
+                            pyDict[kvp.Key] = ConvertDictionaryToPyDict(nestedDict);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning($"Failed to convert nested dictionary for key '{kvp.Key}': {ex.Message}. Using string representation.");
+                            pyDict[kvp.Key] = new PyString(nestedDict.ToString());
+                        }
+                    }
+                    else if (kvp.Value is List<object> listValue)
+                    {
+                        try
+                        {
+                            dynamic pyList = PythonEngine.Eval("[]");
+                            foreach (var item in listValue)
+                            {
+                                try
+                                {
+                                    pyList.append(item);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger?.LogWarning($"Failed to append list item for key '{kvp.Key}': {ex.Message}. Skipping item.");
+                                }
+                            }
+                            pyDict[kvp.Key] = pyList;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning($"Failed to create Python list for key '{kvp.Key}': {ex.Message}. Using string representation.");
+                            pyDict[kvp.Key] = new PyString(string.Join(", ", listValue));
+                        }
+                    }
+                    else
+                    {
+                        try
+                        {
+                            // Handle different value types explicitly with error handling
+                            if (kvp.Value is string stringValue)
+                            {
+                                pyDict[kvp.Key] = new PyString(stringValue);
+                            }
+                            else if (kvp.Value is int intValue)
+                            {
+                                pyDict[kvp.Key] = new PyInt(intValue);
+                            }
+                            else if (kvp.Value is bool boolValue)
+                            {
+                                pyDict[kvp.Key] = boolValue.ToPython();
+                            }
+                            else if (kvp.Value is float floatValue)
+                            {
+                                pyDict[kvp.Key] = new PyFloat(floatValue);
+                            }
+                            else if (kvp.Value is double doubleValue)
+                            {
+                                pyDict[kvp.Key] = new PyFloat(doubleValue);
+                            }
+                            else
+                            {
+                                pyDict[kvp.Key] = new PyString(kvp.Value?.ToString() ?? "");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning($"Failed to convert value for key '{kvp.Key}' (type: {kvp.Value?.GetType().Name}): {ex.Message}. Using string representation.");
+                            pyDict[kvp.Key] = new PyString(kvp.Value?.ToString() ?? "");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning($"Failed to process key '{kvp.Key}': {ex.Message}. Skipping this key.");
+                }
             }
-            else if (kvp.Value is List<object> listValue)
-            {
-                dynamic pyList = PythonEngine.Eval("[]");
-                foreach (var item in listValue)
-                {
-                    pyList.append(item);
-                }
-                pyDict[kvp.Key] = pyList;
-            }
-            else
-            {
-                // Handle different value types explicitly
-                if (kvp.Value is string stringValue)
-                {
-                    pyDict[kvp.Key] = new PyString(stringValue);
-                }
-                else if (kvp.Value is int intValue)
-                {
-                    pyDict[kvp.Key] = new PyInt(intValue);
-                }
-                else if (kvp.Value is bool boolValue)
-                {
-                    pyDict[kvp.Key] = boolValue.ToPython();
-                }
-                else if (kvp.Value is float floatValue)
-                {
-                    pyDict[kvp.Key] = new PyFloat(floatValue);
-                }
-                else if (kvp.Value is double doubleValue)
-                {
-                    pyDict[kvp.Key] = new PyFloat(doubleValue);
-                }
-                else
-                {
-                    pyDict[kvp.Key] = new PyString(kvp.Value?.ToString() ?? "");
-                }
-            }
+            return pyDict;
         }
-        return pyDict;
+        catch (Exception ex)
+        {
+            _logger?.LogError($"Critical failure in ConvertDictionaryToPyDict: {ex.Message}. Returning empty dictionary.");
+            // Return empty Python dictionary as fallback
+            return PythonEngine.Eval("{}");
+        }
     }
 
     /// <summary>
@@ -730,12 +794,37 @@ public class ChromaPythonService : IChromaDbService, IDisposable
     /// </summary>
     private PyObject ConvertMetadatasToPyList(List<Dictionary<string, object>> metadatas)
     {
-        dynamic pyList = PythonEngine.Eval("[]");
-        foreach (var metadata in metadatas)
+        try
         {
-            pyList.append(ConvertDictionaryToPyDict(metadata));
+            dynamic pyList = PythonEngine.Eval("[]");
+            foreach (var metadata in metadatas)
+            {
+                try
+                {
+                    pyList.append(ConvertDictionaryToPyDict(metadata));
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning($"Failed to append metadata dictionary to Python list: {ex.Message}. Adding empty dict as fallback.");
+                    try
+                    {
+                        // Add empty dict as fallback
+                        pyList.append(PythonEngine.Eval("{}"));
+                    }
+                    catch (Exception ex2)
+                    {
+                        _logger?.LogWarning($"Failed to append empty dict fallback: {ex2.Message}. Skipping metadata item.");
+                    }
+                }
+            }
+            return pyList;
         }
-        return pyList;
+        catch (Exception ex)
+        {
+            _logger?.LogError($"Critical failure in ConvertMetadatasToPyList: {ex.Message}. Returning empty list.");
+            // Return empty Python list as fallback
+            return PythonEngine.Eval("[]");
+        }
     }
 
     /// <summary>

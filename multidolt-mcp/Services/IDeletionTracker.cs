@@ -73,5 +73,33 @@ namespace DMMS.Services
         /// </summary>
         Task UpdateDeletionContextAsync(string repoPath, string docId, string collectionName, 
             string newBranchContext, string newBaseCommitHash);
+
+        /// <summary>
+        /// Tracks a collection deletion in the external database
+        /// </summary>
+        Task TrackCollectionDeletionAsync(string repoPath, string collectionName, 
+            Dictionary<string, object> originalMetadata, string branchContext, string baseCommitHash);
+
+        /// <summary>
+        /// Tracks a collection rename/update operation in the external database
+        /// </summary>
+        Task TrackCollectionUpdateAsync(string repoPath, string oldCollectionName, string newCollectionName,
+            Dictionary<string, object> originalMetadata, Dictionary<string, object> newMetadata,
+            string branchContext, string baseCommitHash);
+
+        /// <summary>
+        /// Gets all pending collection deletions for a specific repository
+        /// </summary>
+        Task<List<CollectionDeletionRecord>> GetPendingCollectionDeletionsAsync(string repoPath);
+
+        /// <summary>
+        /// Marks a collection deletion as committed (synced successfully)
+        /// </summary>
+        Task MarkCollectionDeletionCommittedAsync(string repoPath, string collectionName, string operationType);
+
+        /// <summary>
+        /// Cleans up committed collection deletion records for a repository
+        /// </summary>
+        Task CleanupCommittedCollectionDeletionsAsync(string repoPath);
     }
 }

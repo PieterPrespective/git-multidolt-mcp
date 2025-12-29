@@ -74,6 +74,7 @@ namespace DMMS.Testing.IntegrationTests
             var deletionTracker = new SqliteDeletionTracker(
                 loggerFactory.CreateLogger<SqliteDeletionTracker>(),
                 serverConfig.Value);
+            await deletionTracker.InitializeAsync(_tempDir);
                 
             // Initialize sync manager and other components
             _syncManager = new SyncManagerV2(

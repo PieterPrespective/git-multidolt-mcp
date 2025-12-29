@@ -149,6 +149,20 @@ namespace DMMS.Services
         /// <param name="commitMessage">Optional commit message for the import</param>
         /// <returns>Result indicating success and number of documents imported</returns>
         Task<SyncResultV2> ImportFromChromaAsync(string sourceCollection, string? commitMessage = null);
+        
+        // ==================== Collection-Level Sync Operations (PP13-61) ====================
+        
+        /// <summary>
+        /// Synchronize collection-level changes (deletion, rename, metadata updates) from ChromaDB to Dolt
+        /// </summary>
+        /// <returns>Result indicating success and collection changes processed</returns>
+        Task<CollectionSyncResult> SyncCollectionChangesAsync();
+        
+        /// <summary>
+        /// Stage collection-level changes (deletion, rename, metadata updates) to Dolt
+        /// </summary>
+        /// <returns>Result indicating collection changes staged</returns>
+        Task<CollectionSyncResult> StageCollectionChangesAsync();
     }
     
     // ==================== Supporting Types (V2) ====================
@@ -286,5 +300,54 @@ namespace DMMS.Services
         ConflictsDetected,
         Failed,
         LocalChangesExist      // NEW: Merge blocked due to local changes
+    }
+    
+    /// <summary>
+    /// Result of collection-level synchronization operations (PP13-61)
+    /// </summary>
+    public class CollectionSyncResult
+    {
+        public SyncStatusV2 Status { get; set; } = SyncStatusV2.Pending;
+        public string? ErrorMessage { get; set; }
+        public string? CommitHash { get; set; }
+        
+        // Collection-level sync statistics
+        public int CollectionsDeleted { get; set; }
+        public int CollectionsRenamed { get; set; }
+        public int CollectionsUpdated { get; set; }
+        public int DocumentsDeletedByCollectionDeletion { get; set; } // Cascade deletion count
+        
+        // Collection operation details
+        public List<string> DeletedCollectionNames { get; set; } = new();
+        public List<string> RenamedCollectionNames { get; set; } = new();
+        public List<string> UpdatedCollectionNames { get; set; } = new();
+        
+        public bool Success => Status == SyncStatusV2.Completed || Status == SyncStatusV2.NoChanges;
+        public int TotalCollectionChanges => CollectionsDeleted + CollectionsRenamed + CollectionsUpdated;
+        
+        public string GetSummary()
+        {
+            if (!Success)
+                return $"Collection sync failed: {ErrorMessage}";
+            
+            var parts = new List<string>();
+            
+            if (CollectionsDeleted > 0)
+                parts.Add($"Deleted {CollectionsDeleted} collections");
+            
+            if (CollectionsRenamed > 0)
+                parts.Add($"Renamed {CollectionsRenamed} collections");
+            
+            if (CollectionsUpdated > 0)
+                parts.Add($"Updated {CollectionsUpdated} collections");
+            
+            if (DocumentsDeletedByCollectionDeletion > 0)
+                parts.Add($"Cascade deleted {DocumentsDeletedByCollectionDeletion} documents");
+            
+            if (CommitHash != null)
+                parts.Add($"Commit: {CommitHash[..Math.Min(8, CommitHash.Length)]}");
+            
+            return parts.Count > 0 ? string.Join(". ", parts) : "No collection changes";
+        }
     }
 }

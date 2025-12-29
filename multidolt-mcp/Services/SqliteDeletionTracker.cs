@@ -459,6 +459,204 @@ namespace DMMS.Services
             return await ReadDeletionRecordsAsync(command);
         }
 
+        /// <summary>
+        /// Tracks a collection deletion in the external database
+        /// </summary>
+        public async Task TrackCollectionDeletionAsync(string repoPath, string collectionName, 
+            Dictionary<string, object> originalMetadata, string branchContext, string baseCommitHash)
+        {
+            await _semaphore.WaitAsync();
+            try
+            {
+                var deletion = new CollectionDeletionRecord(collectionName, repoPath, "deletion",
+                    "mcp_tool", JsonSerializer.Serialize(originalMetadata), null, null, 
+                    branchContext, baseCommitHash);
+
+                using var connection = new SqliteConnection($"Data Source={_dbPath}");
+                await connection.OpenAsync();
+
+                const string sql = @"
+                    INSERT INTO local_collection_deletions 
+                    (id, repo_path, collection_name, operation_type, deleted_at, deletion_source, 
+                     original_metadata, original_name, new_name, branch_context, base_commit_hash, 
+                     sync_status, created_at)
+                    VALUES 
+                    (@id, @repoPath, @collectionName, @operationType, @deletedAt, @deletionSource, 
+                     @originalMetadata, @originalName, @newName, @branchContext, @baseCommitHash, 
+                     @syncStatus, @createdAt)";
+
+                using var command = new SqliteCommand(sql, connection);
+                command.Parameters.AddWithValue("@id", deletion.Id);
+                command.Parameters.AddWithValue("@repoPath", deletion.RepoPath);
+                command.Parameters.AddWithValue("@collectionName", deletion.CollectionName);
+                command.Parameters.AddWithValue("@operationType", deletion.OperationType);
+                command.Parameters.AddWithValue("@deletedAt", deletion.DeletedAt);
+                command.Parameters.AddWithValue("@deletionSource", deletion.DeletionSource);
+                command.Parameters.AddWithValue("@originalMetadata", (object?)deletion.OriginalMetadata ?? DBNull.Value);
+                command.Parameters.AddWithValue("@originalName", (object?)deletion.OriginalName ?? DBNull.Value);
+                command.Parameters.AddWithValue("@newName", (object?)deletion.NewName ?? DBNull.Value);
+                command.Parameters.AddWithValue("@branchContext", (object?)deletion.BranchContext ?? DBNull.Value);
+                command.Parameters.AddWithValue("@baseCommitHash", (object?)deletion.BaseCommitHash ?? DBNull.Value);
+                command.Parameters.AddWithValue("@syncStatus", deletion.SyncStatus);
+                command.Parameters.AddWithValue("@createdAt", deletion.CreatedAt);
+
+                await command.ExecuteNonQueryAsync();
+
+                _logger.LogInformation($"Tracked collection deletion: {collectionName} in repository {repoPath}");
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Tracks a collection rename/update operation in the external database
+        /// </summary>
+        public async Task TrackCollectionUpdateAsync(string repoPath, string oldCollectionName, string newCollectionName,
+            Dictionary<string, object> originalMetadata, Dictionary<string, object> newMetadata,
+            string branchContext, string baseCommitHash)
+        {
+            await _semaphore.WaitAsync();
+            try
+            {
+                var operationType = oldCollectionName != newCollectionName ? "rename" : "metadata_update";
+                var deletion = new CollectionDeletionRecord(oldCollectionName, repoPath, operationType,
+                    "mcp_tool", JsonSerializer.Serialize(originalMetadata), oldCollectionName, newCollectionName,
+                    branchContext, baseCommitHash);
+
+                using var connection = new SqliteConnection($"Data Source={_dbPath}");
+                await connection.OpenAsync();
+
+                const string sql = @"
+                    INSERT INTO local_collection_deletions 
+                    (id, repo_path, collection_name, operation_type, deleted_at, deletion_source, 
+                     original_metadata, original_name, new_name, branch_context, base_commit_hash, 
+                     sync_status, created_at)
+                    VALUES 
+                    (@id, @repoPath, @collectionName, @operationType, @deletedAt, @deletionSource, 
+                     @originalMetadata, @originalName, @newName, @branchContext, @baseCommitHash, 
+                     @syncStatus, @createdAt)";
+
+                using var command = new SqliteCommand(sql, connection);
+                command.Parameters.AddWithValue("@id", deletion.Id);
+                command.Parameters.AddWithValue("@repoPath", deletion.RepoPath);
+                command.Parameters.AddWithValue("@collectionName", deletion.CollectionName);
+                command.Parameters.AddWithValue("@operationType", deletion.OperationType);
+                command.Parameters.AddWithValue("@deletedAt", deletion.DeletedAt);
+                command.Parameters.AddWithValue("@deletionSource", deletion.DeletionSource);
+                command.Parameters.AddWithValue("@originalMetadata", (object?)deletion.OriginalMetadata ?? DBNull.Value);
+                command.Parameters.AddWithValue("@originalName", (object?)deletion.OriginalName ?? DBNull.Value);
+                command.Parameters.AddWithValue("@newName", (object?)deletion.NewName ?? DBNull.Value);
+                command.Parameters.AddWithValue("@branchContext", (object?)deletion.BranchContext ?? DBNull.Value);
+                command.Parameters.AddWithValue("@baseCommitHash", (object?)deletion.BaseCommitHash ?? DBNull.Value);
+                command.Parameters.AddWithValue("@syncStatus", deletion.SyncStatus);
+                command.Parameters.AddWithValue("@createdAt", deletion.CreatedAt);
+
+                await command.ExecuteNonQueryAsync();
+
+                _logger.LogInformation($"Tracked collection {operationType}: {oldCollectionName} -> {newCollectionName} in repository {repoPath}");
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Gets all pending collection deletions for a specific repository
+        /// </summary>
+        public async Task<List<CollectionDeletionRecord>> GetPendingCollectionDeletionsAsync(string repoPath)
+        {
+            await _semaphore.WaitAsync();
+            try
+            {
+                using var connection = new SqliteConnection($"Data Source={_dbPath}");
+                await connection.OpenAsync();
+
+                const string sql = @"
+                    SELECT id, repo_path, collection_name, operation_type, deleted_at, deletion_source,
+                           original_metadata, original_name, new_name, branch_context, base_commit_hash, 
+                           sync_status, created_at
+                    FROM local_collection_deletions 
+                    WHERE repo_path = @repoPath AND sync_status = 'pending'
+                    ORDER BY collection_name, 
+                             CASE operation_type 
+                                 WHEN 'deletion' THEN 1 
+                                 WHEN 'rename' THEN 2 
+                                 WHEN 'metadata_update' THEN 3 
+                                 ELSE 4 
+                             END, 
+                             deleted_at";
+
+                using var command = new SqliteCommand(sql, connection);
+                command.Parameters.AddWithValue("@repoPath", repoPath);
+
+                return await ReadCollectionDeletionRecordsAsync(command);
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Marks a collection deletion as committed (synced successfully)
+        /// </summary>
+        public async Task MarkCollectionDeletionCommittedAsync(string repoPath, string collectionName, string operationType)
+        {
+            await _semaphore.WaitAsync();
+            try
+            {
+                using var connection = new SqliteConnection($"Data Source={_dbPath}");
+                await connection.OpenAsync();
+
+                const string sql = @"
+                    UPDATE local_collection_deletions 
+                    SET sync_status = 'committed'
+                    WHERE repo_path = @repoPath AND collection_name = @collectionName AND operation_type = @operationType";
+
+                using var command = new SqliteCommand(sql, connection);
+                command.Parameters.AddWithValue("@repoPath", repoPath);
+                command.Parameters.AddWithValue("@collectionName", collectionName);
+                command.Parameters.AddWithValue("@operationType", operationType);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                
+                _logger.LogDebug($"Marked collection {operationType} as committed: {collectionName} in repository {repoPath} ({rowsAffected} rows affected)");
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Cleans up committed collection deletion records for a repository
+        /// </summary>
+        public async Task CleanupCommittedCollectionDeletionsAsync(string repoPath)
+        {
+            await _semaphore.WaitAsync();
+            try
+            {
+                using var connection = new SqliteConnection($"Data Source={_dbPath}");
+                await connection.OpenAsync();
+
+                const string sql = @"DELETE FROM local_collection_deletions WHERE repo_path = @repoPath AND sync_status = 'committed'";
+
+                using var command = new SqliteCommand(sql, connection);
+                command.Parameters.AddWithValue("@repoPath", repoPath);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+                
+                _logger.LogDebug($"Cleaned up {rowsAffected} committed collection deletion records for repository {repoPath}");
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
+        }
+
         #region Private Methods
 
         /// <summary>
@@ -485,9 +683,27 @@ namespace DMMS.Services
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
 
+                CREATE TABLE IF NOT EXISTS local_collection_deletions (
+                    id TEXT PRIMARY KEY,
+                    repo_path TEXT NOT NULL,
+                    collection_name TEXT NOT NULL,
+                    operation_type TEXT NOT NULL,
+                    deleted_at DATETIME NOT NULL,
+                    deletion_source TEXT NOT NULL,
+                    original_metadata TEXT,
+                    original_name TEXT,
+                    new_name TEXT,
+                    branch_context TEXT,
+                    base_commit_hash TEXT,
+                    sync_status TEXT DEFAULT 'pending',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_repo_doc_collection ON local_deletions(repo_path, doc_id, collection_name);
                 CREATE INDEX IF NOT EXISTS idx_repo_sync_status ON local_deletions(repo_path, sync_status);
-                CREATE INDEX IF NOT EXISTS idx_repo_collection ON local_deletions(repo_path, collection_name);";
+                CREATE INDEX IF NOT EXISTS idx_repo_collection ON local_deletions(repo_path, collection_name);
+                CREATE INDEX IF NOT EXISTS idx_repo_collection_operation ON local_collection_deletions(repo_path, collection_name, operation_type);
+                CREATE INDEX IF NOT EXISTS idx_repo_collection_sync_status ON local_collection_deletions(repo_path, sync_status);";
 
             using var command = new SqliteCommand(createTableSql, connection);
             await command.ExecuteNonQueryAsync();
@@ -560,6 +776,38 @@ namespace DMMS.Services
                     DeletionSource = reader.GetString("deletion_source"),
                     OriginalContentHash = reader.IsDBNull("original_content_hash") ? null : reader.GetString("original_content_hash"),
                     OriginalMetadata = reader.IsDBNull("original_metadata") ? null : reader.GetString("original_metadata"),
+                    BranchContext = reader.IsDBNull("branch_context") ? null : reader.GetString("branch_context"),
+                    BaseCommitHash = reader.IsDBNull("base_commit_hash") ? null : reader.GetString("base_commit_hash"),
+                    SyncStatus = reader.GetString("sync_status"),
+                    CreatedAt = reader.GetDateTime("created_at")
+                };
+                records.Add(record);
+            }
+            
+            return records;
+        }
+
+        /// <summary>
+        /// Reads collection deletion records from a command result
+        /// </summary>
+        private async Task<List<CollectionDeletionRecord>> ReadCollectionDeletionRecordsAsync(SqliteCommand command)
+        {
+            var records = new List<CollectionDeletionRecord>();
+            using var reader = await command.ExecuteReaderAsync();
+            
+            while (await reader.ReadAsync())
+            {
+                var record = new CollectionDeletionRecord
+                {
+                    Id = reader.GetString("id"),
+                    RepoPath = reader.GetString("repo_path"),
+                    CollectionName = reader.GetString("collection_name"),
+                    OperationType = reader.GetString("operation_type"),
+                    DeletedAt = reader.GetDateTime("deleted_at"),
+                    DeletionSource = reader.GetString("deletion_source"),
+                    OriginalMetadata = reader.IsDBNull("original_metadata") ? null : reader.GetString("original_metadata"),
+                    OriginalName = reader.IsDBNull("original_name") ? null : reader.GetString("original_name"),
+                    NewName = reader.IsDBNull("new_name") ? null : reader.GetString("new_name"),
                     BranchContext = reader.IsDBNull("branch_context") ? null : reader.GetString("branch_context"),
                     BaseCommitHash = reader.IsDBNull("base_commit_hash") ? null : reader.GetString("base_commit_hash"),
                     SyncStatus = reader.GetString("sync_status"),

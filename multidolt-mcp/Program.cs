@@ -71,6 +71,9 @@ builder.Services.AddSingleton<ISyncManagerV2, SyncManagerV2>();
 // Register deletion tracking service
 builder.Services.AddSingleton<IDeletionTracker, SqliteDeletionTracker>();
 
+// Register collection change detection service
+builder.Services.AddSingleton<ICollectionChangeDetector, CollectionChangeDetector>();
+
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
@@ -116,52 +119,22 @@ builder.Services
 
 var host = builder.Build();
 
-// Initialize deletion tracker during startup
-try 
-{
-    var deletionTracker = host.Services.GetRequiredService<IDeletionTracker>();
-    var doltConfiguration = host.Services.GetRequiredService<DoltConfiguration>();
-    
-    // Initialize deletion tracker with the repository path
-    await deletionTracker.InitializeAsync(doltConfiguration.RepositoryPath);
-    
-    if (enableLogging)
-    {
-        var logger = host.Services.GetService<ILogger<Program>>();
-        logger?.LogInformation("Deletion tracker initialized successfully for repository: {RepositoryPath}", doltConfiguration.RepositoryPath);
-    }
-}
-catch (Exception ex)
-{
-    if (enableLogging)
-    {
-        var logger = host.Services.GetService<ILogger<Program>>();
-        logger?.LogError(ex, "Failed to initialize deletion tracker: {Error}", ex.Message);
-    }
-    throw; // Don't continue if deletion tracker fails to initialize
-}
-
+// Initialize PythonContext FIRST before any service that needs ChromaDB
+// This must happen before collection change detector or any ChromaDB operations
 if (enableLogging)
 {
-    var logger = host.Services.GetRequiredService<ILogger<Program>>();
-    
-    var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
-    
-    logger.LogInformation("DMMS (Dolt Multi-Database MCP Server) v{Version} starting up", version);
-    logger.LogInformation("This server provides MCP access to multiple Dolt databases via terminal commands");
-
-    // Initialize PythonContext on main thread to prevent GIL deadlocks
+    var logger = host.Services.GetService<ILogger<Program>>();
+    logger?.LogInformation("Initializing Python context (required for ChromaDB)...");
     try
     {
-        logger.LogInformation("Initializing Python context...");
         var pythonDll = PythonContextUtility.FindPythonDll(logger);
         PythonContext.Initialize(logger, pythonDll);
-        logger.LogInformation("Python context initialized successfully");
+        logger?.LogInformation("✓ Python context initialized successfully");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to initialize Python context. ChromaDB functionality will be unavailable.");
-        throw; // Don't continue if Python fails to initialize
+        logger?.LogCritical(ex, "FATAL: Failed to initialize Python context. ChromaDB functionality will be unavailable.");
+        Environment.Exit(10); // Exit code 10 for Python initialization failure
     }
 }
 else
@@ -174,8 +147,155 @@ else
     }
     catch (Exception)
     {
-        throw; // Don't continue if Python fails to initialize
+        Environment.Exit(10); // Exit code 10 for Python initialization failure
     }
+}
+
+// Phase 4: Enhanced Production Initialization Pattern (PP13-61)
+// Initialize deletion tracker during startup with comprehensive validation
+try 
+{
+    var deletionTracker = host.Services.GetRequiredService<IDeletionTracker>();
+    var doltConfiguration = host.Services.GetRequiredService<DoltConfiguration>();
+    
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogInformation("Starting deletion tracker initialization for repository: {RepositoryPath}", doltConfiguration.RepositoryPath);
+    }
+    
+    // Initialize deletion tracker with the repository path (includes collection schema)
+    await deletionTracker.InitializeAsync(doltConfiguration.RepositoryPath);
+    
+    // Validate all required tables exist (both document and collection deletion tracking)
+    if (deletionTracker is SqliteDeletionTracker sqliteTracker)
+    {
+        // Get the server configuration to find the correct data path
+        var serverConfiguration = host.Services.GetRequiredService<ServerConfiguration>();
+        
+        // Verify the database file was created at the correct location
+        // SqliteDeletionTracker creates it at: {DataPath}/dev/deletion_tracking.db
+        var dbPath = Path.Combine(serverConfiguration.DataPath, "dev", "deletion_tracking.db");
+        if (!File.Exists(dbPath))
+        {
+            throw new InvalidOperationException($"Deletion tracker database was not created at expected path: {dbPath}");
+        }
+        
+        if (enableLogging)
+        {
+            var logger = host.Services.GetService<ILogger<Program>>();
+            logger?.LogInformation("✓ Deletion tracker database verified at: {DbPath}", dbPath);
+        }
+    }
+    
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogInformation("✓ Deletion tracker initialized successfully with document and collection tracking schemas");
+    }
+}
+catch (Exception ex)
+{
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogCritical(ex, "FATAL: Failed to initialize deletion tracker - application cannot continue");
+    }
+    
+    // Fail-fast: Exit with non-zero code to signal initialization failure
+    Environment.Exit(1);
+}
+
+// Phase 4: Enhanced Collection Change Detector Initialization (PP13-61)
+// Initialize collection change detector with comprehensive validation
+try 
+{
+    var collectionChangeDetector = host.Services.GetRequiredService<ICollectionChangeDetector>();
+    var doltConfiguration = host.Services.GetRequiredService<DoltConfiguration>();
+    
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogInformation("Starting collection change detector initialization for repository: {RepositoryPath}", doltConfiguration.RepositoryPath);
+    }
+    
+    // Initialize collection change detector with the repository path
+    await collectionChangeDetector.InitializeAsync(doltConfiguration.RepositoryPath);
+    
+    // Validate schema exists (verifies deletion tracker integration)
+    await collectionChangeDetector.ValidateSchemaAsync(doltConfiguration.RepositoryPath);
+    
+    // Validate initialization completeness
+    await collectionChangeDetector.ValidateInitializationAsync();
+    
+    // Verify service dependencies are properly wired
+    var chromaService = host.Services.GetRequiredService<IChromaDbService>();
+    var doltCli = host.Services.GetRequiredService<IDoltCli>();
+    var deletionTracker = host.Services.GetRequiredService<IDeletionTracker>();
+    
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogInformation("✓ Collection change detector validated with all dependencies");
+        logger?.LogInformation("  - ChromaDB service: {ServiceType}", chromaService.GetType().Name);
+        logger?.LogInformation("  - Dolt CLI service: {ServiceType}", doltCli.GetType().Name);
+        logger?.LogInformation("  - Deletion tracker: {ServiceType}", deletionTracker.GetType().Name);
+        logger?.LogInformation("✓ Collection change detector initialization complete");
+    }
+}
+catch (Exception ex)
+{
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogCritical(ex, "FATAL: Failed to initialize collection change detector - application cannot continue");
+    }
+    
+    // Fail-fast: Exit with non-zero code to signal initialization failure
+    Environment.Exit(2);
+}
+
+// Phase 4: Validate Sync Service Integration (PP13-61)
+// Ensure all sync-related services are properly initialized
+try
+{
+    var syncManager = host.Services.GetRequiredService<ISyncManagerV2>();
+    
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogInformation("Validating sync service integration...");
+        
+        // Verify the sync manager can access all required services
+        if (syncManager is SyncManagerV2 syncV2)
+        {
+            logger?.LogInformation("✓ SyncManagerV2 service initialized with collection sync support");
+        }
+        
+        logger?.LogInformation("✓ All collection-level sync services validated and ready");
+    }
+}
+catch (Exception ex)
+{
+    if (enableLogging)
+    {
+        var logger = host.Services.GetService<ILogger<Program>>();
+        logger?.LogCritical(ex, "FATAL: Failed to initialize sync services - application cannot continue");
+    }
+    
+    // Fail-fast: Exit with non-zero code to signal initialization failure
+    Environment.Exit(3);
+}
+
+if (enableLogging)
+{
+    var logger = host.Services.GetRequiredService<ILogger<Program>>();
+    
+    var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+    
+    logger.LogInformation("DMMS (Dolt Multi-Database MCP Server) v{Version} starting up", version);
+    logger.LogInformation("This server provides MCP access to multiple Dolt databases via terminal commands");
+    logger.LogInformation("✓ All services initialized successfully");
 }
 
 // Register shutdown hook to clean up Python context

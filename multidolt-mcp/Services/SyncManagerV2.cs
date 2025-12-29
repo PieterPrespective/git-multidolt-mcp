@@ -21,6 +21,8 @@ namespace DMMS.Services
         private readonly DeltaDetectorV2 _deltaDetector;
         private readonly ChromaToDoltDetector _chromaToDoltDetector;
         private readonly ChromaToDoltSyncer _chromaToDoltSyncer;
+        private readonly IDeletionTracker _deletionTracker;
+        private readonly DoltConfiguration _doltConfig;
         private readonly ILogger<SyncManagerV2> _logger;
 
         public SyncManagerV2(
@@ -32,6 +34,8 @@ namespace DMMS.Services
         {
             _dolt = dolt;
             _chromaService = chromaService;
+            _deletionTracker = deletionTracker;
+            _doltConfig = doltConfig.Value;
             _logger = logger;
             
             // Initialize detectors and syncers
@@ -406,6 +410,30 @@ namespace DMMS.Services
                     }
                 }
                 
+                // PP13-61: Stage collection-level changes (deletion, rename, metadata updates)
+                _logger.LogInformation("ProcessCommitAsync: Checking for pending collection changes");
+                var collectionResult = await StageCollectionChangesAsync();
+                
+                if (collectionResult.Status == SyncStatusV2.Failed)
+                {
+                    result.Status = SyncStatusV2.Failed;
+                    result.ErrorMessage = $"Failed to stage collection changes: {collectionResult.ErrorMessage}";
+                    return result;
+                }
+                
+                if (collectionResult.TotalCollectionChanges > 0)
+                {
+                    _logger.LogInformation("ProcessCommitAsync: Staged {Count} collection changes ({Summary})", 
+                        collectionResult.TotalCollectionChanges, collectionResult.GetSummary());
+                    
+                    // Add collection sync summary to result data
+                    result.Data = new { CollectionChanges = collectionResult };
+                }
+                else
+                {
+                    _logger.LogInformation("ProcessCommitAsync: No collection changes to stage");
+                }
+                
                 // Stage any remaining Dolt changes
                 await _dolt.AddAllAsync();
                 
@@ -420,6 +448,36 @@ namespace DMMS.Services
                 }
 
                 result.CommitHash = commitResult.CommitHash;
+                
+                // PP13-61: Mark collection changes as committed and cleanup tracking records
+                if (collectionResult.TotalCollectionChanges > 0)
+                {
+                    _logger.LogInformation("ProcessCommitAsync: Processing collection changes post-commit cleanup");
+                    
+                    try
+                    {
+                        // Get pending deletions to mark them as committed
+                        var pendingDeletions = await _deletionTracker.GetPendingCollectionDeletionsAsync(_doltConfig.RepositoryPath);
+                        
+                        // Mark each operation as committed
+                        foreach (var deletion in pendingDeletions)
+                        {
+                            await _deletionTracker.MarkCollectionDeletionCommittedAsync(
+                                _doltConfig.RepositoryPath, 
+                                deletion.CollectionName, 
+                                deletion.OperationType);
+                        }
+                        
+                        // Cleanup committed records
+                        await _deletionTracker.CleanupCommittedCollectionDeletionsAsync(_doltConfig.RepositoryPath);
+                        
+                        _logger.LogInformation("ProcessCommitAsync: Collection changes cleanup completed successfully");
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        _logger.LogWarning(cleanupEx, "ProcessCommitAsync: Collection changes cleanup failed, but commit was successful");
+                    }
+                }
                 
                 // Phase 2: Post-commit validation to ensure local changes were properly cleared
                 _logger.LogInformation("ProcessCommitAsync: Performing post-commit validation to ensure local changes were cleared");
@@ -1462,6 +1520,309 @@ namespace DMMS.Services
                 _logger.LogError(ex, "ValidateBranchStateAsync: Failed to validate branch state");
                 return (false, $"Validation error: {ex.Message}");
             }
+        }
+
+        #endregion
+
+        #region Collection-Level Sync Operations (PP13-61)
+
+        /// <summary>
+        /// Synchronize collection-level changes (deletion, rename, metadata updates) from ChromaDB to Dolt
+        /// </summary>
+        public async Task<CollectionSyncResult> SyncCollectionChangesAsync()
+        {
+            _logger.LogInformation("SyncCollectionChangesAsync: Starting collection-level sync operation");
+            
+            var result = new CollectionSyncResult { Status = SyncStatusV2.InProgress };
+            
+            try
+            {
+                // Step 1: Get pending collection deletions from tracking database
+                var pendingDeletions = await _deletionTracker.GetPendingCollectionDeletionsAsync(_doltConfig.RepositoryPath);
+                _logger.LogInformation("SyncCollectionChangesAsync: Found {Count} pending collection operations", pendingDeletions.Count);
+
+                if (pendingDeletions.Count == 0)
+                {
+                    _logger.LogInformation("SyncCollectionChangesAsync: No collection changes to sync");
+                    result.Status = SyncStatusV2.NoChanges;
+                    return result;
+                }
+
+                // Step 2: Group operations by type
+                var deletionOps = pendingDeletions.Where(d => d.OperationType == "deletion").ToList();
+                var renameOps = pendingDeletions.Where(d => d.OperationType == "rename").ToList();
+                var updateOps = pendingDeletions.Where(d => d.OperationType == "metadata_update").ToList();
+
+                _logger.LogInformation("SyncCollectionChangesAsync: Processing {DeleteCount} deletions, {RenameCount} renames, {UpdateCount} updates", 
+                    deletionOps.Count, renameOps.Count, updateOps.Count);
+
+                // Step 3: Process collection deletions (includes cascade document deletion)
+                foreach (var deletion in deletionOps)
+                {
+                    try
+                    {
+                        await ProcessCollectionDeletion(deletion, result);
+                        result.CollectionsDeleted++;
+                        result.DeletedCollectionNames.Add(deletion.CollectionName);
+                        
+                        // Mark as committed
+                        await _deletionTracker.MarkCollectionDeletionCommittedAsync(_doltConfig.RepositoryPath, deletion.CollectionName, "deletion");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "SyncCollectionChangesAsync: Failed to process collection deletion for '{Collection}'", deletion.CollectionName);
+                        result.Status = SyncStatusV2.Failed;
+                        result.ErrorMessage = $"Failed to process collection deletion for '{deletion.CollectionName}': {ex.Message}";
+                        return result;
+                    }
+                }
+
+                // Step 4: Process collection renames
+                foreach (var rename in renameOps)
+                {
+                    try
+                    {
+                        await ProcessCollectionRename(rename, result);
+                        result.CollectionsRenamed++;
+                        result.RenamedCollectionNames.Add($"{rename.OriginalName} -> {rename.NewName}");
+                        
+                        // Mark as committed
+                        await _deletionTracker.MarkCollectionDeletionCommittedAsync(_doltConfig.RepositoryPath, rename.CollectionName, "rename");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "SyncCollectionChangesAsync: Failed to process collection rename for '{Collection}'", rename.CollectionName);
+                        result.Status = SyncStatusV2.Failed;
+                        result.ErrorMessage = $"Failed to process collection rename for '{rename.CollectionName}': {ex.Message}";
+                        return result;
+                    }
+                }
+
+                // Step 5: Process collection metadata updates
+                foreach (var update in updateOps)
+                {
+                    try
+                    {
+                        await ProcessCollectionMetadataUpdate(update, result);
+                        result.CollectionsUpdated++;
+                        result.UpdatedCollectionNames.Add(update.CollectionName);
+                        
+                        // Mark as committed
+                        await _deletionTracker.MarkCollectionDeletionCommittedAsync(_doltConfig.RepositoryPath, update.CollectionName, "metadata_update");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "SyncCollectionChangesAsync: Failed to process collection update for '{Collection}'", update.CollectionName);
+                        result.Status = SyncStatusV2.Failed;
+                        result.ErrorMessage = $"Failed to process collection update for '{update.CollectionName}': {ex.Message}";
+                        return result;
+                    }
+                }
+
+                // Step 6: Commit changes if any operations were processed
+                if (result.TotalCollectionChanges > 0)
+                {
+                    var commitMessage = $"Collection sync: {result.GetSummary()}";
+                    var commitResult = await _dolt.CommitAsync(commitMessage);
+                    result.CommitHash = commitResult.CommitHash;
+                    _logger.LogInformation("SyncCollectionChangesAsync: Committed collection changes with hash {CommitHash}", result.CommitHash);
+                }
+
+                // Step 7: Cleanup committed collection deletion records
+                await _deletionTracker.CleanupCommittedCollectionDeletionsAsync(_doltConfig.RepositoryPath);
+
+                result.Status = SyncStatusV2.Completed;
+                _logger.LogInformation("SyncCollectionChangesAsync: Collection sync completed successfully. {Summary}", result.GetSummary());
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "SyncCollectionChangesAsync: Collection sync operation failed");
+                result.Status = SyncStatusV2.Failed;
+                result.ErrorMessage = $"Collection sync failed: {ex.Message}";
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Stage collection-level changes (deletion, rename, metadata updates) to Dolt
+        /// </summary>
+        public async Task<CollectionSyncResult> StageCollectionChangesAsync()
+        {
+            _logger.LogInformation("StageCollectionChangesAsync: Starting collection-level staging operation");
+            
+            var result = new CollectionSyncResult { Status = SyncStatusV2.InProgress };
+            
+            try
+            {
+                // Step 1: Get pending collection deletions from tracking database
+                var pendingDeletions = await _deletionTracker.GetPendingCollectionDeletionsAsync(_doltConfig.RepositoryPath);
+                _logger.LogInformation("StageCollectionChangesAsync: Found {Count} pending collection operations", pendingDeletions.Count);
+
+                if (pendingDeletions.Count == 0)
+                {
+                    _logger.LogInformation("StageCollectionChangesAsync: No collection changes to stage");
+                    result.Status = SyncStatusV2.NoChanges;
+                    return result;
+                }
+
+                // Step 2: Execute collection operations before staging (with conflict resolution)
+                var deletedCollections = new HashSet<string>(); // Track collections that have been deleted
+                
+                foreach (var deletion in pendingDeletions)
+                {
+                    // Conflict resolution: Skip operations on collections that have already been deleted
+                    if (deletedCollections.Contains(deletion.CollectionName) && deletion.OperationType != "deletion")
+                    {
+                        _logger.LogInformation("StageCollectionChangesAsync: Skipping {OperationType} for collection '{Collection}' - collection already deleted (conflict resolution)", 
+                            deletion.OperationType, deletion.CollectionName);
+                        continue;
+                    }
+
+                    switch (deletion.OperationType)
+                    {
+                        case "deletion":
+                            await ProcessCollectionDeletion(deletion, result);
+                            deletedCollections.Add(deletion.CollectionName); // Mark collection as deleted
+                            break;
+                        case "rename":
+                            await ProcessCollectionRename(deletion, result);
+                            break;
+                        case "metadata_update":
+                            await ProcessCollectionMetadataUpdate(deletion, result);
+                            break;
+                        default:
+                            _logger.LogWarning("StageCollectionChangesAsync: Unknown operation type '{OperationType}' for collection '{Collection}'", 
+                                deletion.OperationType, deletion.CollectionName);
+                            break;
+                    }
+                }
+
+                // Step 3: Stage collection table changes to Dolt
+                await _dolt.AddAsync("collections");
+                _logger.LogInformation("StageCollectionChangesAsync: Staged collection table changes");
+
+                // Step 4: Stage document table changes (for cascade deletions)
+                await _dolt.AddAsync("documents");
+                _logger.LogInformation("StageCollectionChangesAsync: Staged document table changes");
+
+                // Step 5: Count operations by type for reporting
+                var deletionOps = pendingDeletions.Where(d => d.OperationType == "deletion").ToList();
+                var renameOps = pendingDeletions.Where(d => d.OperationType == "rename").ToList();
+                var updateOps = pendingDeletions.Where(d => d.OperationType == "metadata_update").ToList();
+
+                result.CollectionsDeleted = deletionOps.Count;
+                result.CollectionsRenamed = renameOps.Count;
+                result.CollectionsUpdated = updateOps.Count;
+
+                // Populate names for reporting
+                result.DeletedCollectionNames.AddRange(deletionOps.Select(d => d.CollectionName));
+                result.RenamedCollectionNames.AddRange(renameOps.Select(r => $"{r.OriginalName} -> {r.NewName}"));
+                result.UpdatedCollectionNames.AddRange(updateOps.Select(u => u.CollectionName));
+
+                result.Status = SyncStatusV2.Completed;
+                _logger.LogInformation("StageCollectionChangesAsync: Collection staging completed successfully. {Summary}", result.GetSummary());
+                
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "StageCollectionChangesAsync: Collection staging operation failed");
+                result.Status = SyncStatusV2.Failed;
+                result.ErrorMessage = $"Collection staging failed: {ex.Message}";
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Process a collection deletion operation including cascade document deletion
+        /// </summary>
+        private async Task ProcessCollectionDeletion(CollectionDeletionRecord deletion, CollectionSyncResult result)
+        {
+            _logger.LogInformation("ProcessCollectionDeletion: Processing deletion for collection '{Collection}'", deletion.CollectionName);
+
+            // Step 1: Check if documents table exists before querying it
+            var tablesResult = await _dolt.QueryAsync<Dictionary<string, object>>("SHOW TABLES");
+            bool documentsTableExists = tablesResult?.Any(row => row.Values.Any(v => v.ToString() == "documents")) ?? false;
+            
+            var documentIds = new List<string>();
+            
+            if (documentsTableExists)
+            {
+                // Get all documents in the collection before deletion
+                var documentsResult = await _dolt.QueryAsync<Dictionary<string, object>>($"SELECT doc_id FROM documents WHERE collection_name = '{deletion.CollectionName}'");
+                
+                if (documentsResult != null)
+                {
+                    documentIds.AddRange(documentsResult.Select(row => row["doc_id"].ToString()!));
+                }
+            }
+            else
+            {
+                _logger.LogInformation("ProcessCollectionDeletion: Documents table doesn't exist - no documents to cascade delete");
+            }
+
+            _logger.LogInformation("ProcessCollectionDeletion: Found {Count} documents to cascade delete", documentIds.Count);
+            result.DocumentsDeletedByCollectionDeletion += documentIds.Count;
+
+            // Step 2: Delete all documents in the collection (cascade deletion)
+            if (documentsTableExists && documentIds.Count > 0)
+            {
+                await _dolt.QueryAsync<object>($"DELETE FROM documents WHERE collection_name = '{deletion.CollectionName}'");
+                _logger.LogInformation("ProcessCollectionDeletion: Cascade deleted {Count} documents", documentIds.Count);
+            }
+
+            // Step 3: Delete the collection from Dolt collections table (if table exists)
+            bool collectionsTableExists = tablesResult?.Any(row => row.Values.Any(v => v.ToString() == "collections")) ?? false;
+            if (collectionsTableExists)
+            {
+                await _dolt.QueryAsync<object>($"DELETE FROM collections WHERE collection_name = '{deletion.CollectionName}'");
+                _logger.LogInformation("ProcessCollectionDeletion: Deleted collection '{Collection}' from Dolt", deletion.CollectionName);
+            }
+            else
+            {
+                _logger.LogInformation("ProcessCollectionDeletion: Collections table doesn't exist - no collection record to delete");
+            }
+        }
+
+        /// <summary>
+        /// Process a collection rename operation
+        /// </summary>
+        private async Task ProcessCollectionRename(CollectionDeletionRecord rename, CollectionSyncResult result)
+        {
+            _logger.LogInformation("ProcessCollectionRename: Processing rename from '{OldName}' to '{NewName}'", 
+                rename.OriginalName, rename.NewName);
+
+            // Step 1: Update collection name in collections table
+            await _dolt.QueryAsync<object>($"UPDATE collections SET collection_name = '{rename.NewName}' WHERE collection_name = '{rename.OriginalName}'");
+            
+            // Step 2: Update collection name in documents table
+            await _dolt.QueryAsync<object>($"UPDATE documents SET collection_name = '{rename.NewName}' WHERE collection_name = '{rename.OriginalName}'");
+            
+            _logger.LogInformation("ProcessCollectionRename: Renamed collection from '{OldName}' to '{NewName}'", 
+                rename.OriginalName, rename.NewName);
+        }
+
+        /// <summary>
+        /// Process a collection metadata update operation
+        /// </summary>
+        private async Task ProcessCollectionMetadataUpdate(CollectionDeletionRecord update, CollectionSyncResult result)
+        {
+            _logger.LogInformation("ProcessCollectionMetadataUpdate: Processing metadata update for collection '{Collection}'", 
+                update.CollectionName);
+
+            // Parse the new metadata from the record
+            var newMetadata = string.IsNullOrEmpty(update.NewName) ? new Dictionary<string, object>() : 
+                JsonSerializer.Deserialize<Dictionary<string, object>>(update.NewName) ?? new Dictionary<string, object>();
+
+            var metadataJson = JsonSerializer.Serialize(newMetadata);
+
+            // Update collection metadata in collections table
+            await _dolt.QueryAsync<object>($"UPDATE collections SET metadata = '{metadataJson}' WHERE collection_name = '{update.CollectionName}'");
+            
+            _logger.LogInformation("ProcessCollectionMetadataUpdate: Updated metadata for collection '{Collection}'", 
+                update.CollectionName);
         }
 
         #endregion

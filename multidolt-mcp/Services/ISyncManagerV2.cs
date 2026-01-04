@@ -116,8 +116,9 @@ namespace DMMS.Services
         /// Perform a full synchronization from Dolt to ChromaDB
         /// </summary>
         /// <param name="collectionName">Target ChromaDB collection name</param>
+        /// <param name="forceSync">Force sync by deleting and recreating collections, bypassing count optimization</param>
         /// <returns>Result indicating success and number of documents processed</returns>
-        Task<SyncResultV2> FullSyncAsync(string? collectionName = null);
+        Task<SyncResultV2> FullSyncAsync(string? collectionName = null, bool forceSync = false);
         
         /// <summary>
         /// Perform an incremental sync of pending changes

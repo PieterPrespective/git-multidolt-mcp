@@ -1065,7 +1065,7 @@ namespace DMMS.Services
 
         #region Manual Sync Operations
 
-        public async Task<SyncResultV2> FullSyncAsync(string? collectionName = null)
+        public async Task<SyncResultV2> FullSyncAsync(string? collectionName = null, bool forceSync = false)
         {
             var result = new SyncResultV2 { Direction = SyncDirection.DoltToChroma };
             
@@ -1092,7 +1092,7 @@ namespace DMMS.Services
                         bool anyChanges = false;
                         foreach (var collection in doltCollections)
                         {
-                            var collectionResult = await SyncSingleCollectionAsync(collection);
+                            var collectionResult = await SyncSingleCollectionAsync(collection, forceSync);
                             result.Added += collectionResult.Added;
                             result.Modified += collectionResult.Modified;
                             result.Deleted += collectionResult.Deleted;
@@ -1123,7 +1123,7 @@ namespace DMMS.Services
                 }
                 
                 // Sync single collection
-                return await SyncSingleCollectionAsync(collectionName);
+                return await SyncSingleCollectionAsync(collectionName, forceSync);
             }
             catch (Exception ex)
             {
@@ -1137,7 +1137,9 @@ namespace DMMS.Services
         /// <summary>
         /// Synchronize a single collection from Dolt to ChromaDB
         /// </summary>
-        private async Task<SyncResultV2> SyncSingleCollectionAsync(string collectionName)
+        /// <param name="collectionName">Name of the collection to sync</param>
+        /// <param name="forceSync">Force sync by deleting and recreating collection, bypassing count optimization</param>
+        private async Task<SyncResultV2> SyncSingleCollectionAsync(string collectionName, bool forceSync = false)
         {
             var result = new SyncResultV2 { Direction = SyncDirection.DoltToChroma };
             
@@ -1154,27 +1156,37 @@ namespace DMMS.Services
                 
                 if (existingCollections.Contains(collectionName))
                 {
-                    // Check if content is already identical
-                    var existingCount = await _chromaService.GetDocumentCountAsync(collectionName);
-                    if (existingCount == documents.Count())
+                    if (forceSync)
                     {
-                        // For simplicity, if counts match, assume content is already synchronized
-                        // A more thorough check could compare individual document content
-                        needsSync = false;
-                        result.Status = SyncStatusV2.NoChanges;
-                        _logger.LogInformation("Collection {Collection} already synchronized - no changes needed (count match: {Count})", collectionName, existingCount);
-                        
-                        // Still update sync state to record that we checked
-                        var commitHash = await _dolt.GetHeadCommitHashAsync();
-                        await _deltaDetector.UpdateSyncStateAsync(collectionName, commitHash, 0, 0);
-                        
-                        return result;
-                    }
-                    
-                    if (needsSync)
-                    {
-                        _logger.LogInformation("Deleting existing collection {Collection} - content differs", collectionName);
+                        // Force sync requested - delete collection for clean rebuild (bypassing count optimization)
+                        _logger.LogInformation("Force sync requested - deleting collection {Collection} for clean rebuild", collectionName);
                         await _chromaService.DeleteCollectionAsync(collectionName);
+                        needsSync = true;
+                    }
+                    else
+                    {
+                        // Check if content is already identical using count optimization
+                        var existingCount = await _chromaService.GetDocumentCountAsync(collectionName);
+                        if (existingCount == documents.Count())
+                        {
+                            // For simplicity, if counts match, assume content is already synchronized
+                            // A more thorough check could compare individual document content
+                            needsSync = false;
+                            result.Status = SyncStatusV2.NoChanges;
+                            _logger.LogInformation("Collection {Collection} already synchronized - no changes needed (count match: {Count})", collectionName, existingCount);
+                            
+                            // Still update sync state to record that we checked
+                            var commitHash = await _dolt.GetHeadCommitHashAsync();
+                            await _deltaDetector.UpdateSyncStateAsync(collectionName, commitHash, 0, 0);
+                            
+                            return result;
+                        }
+                        
+                        if (needsSync)
+                        {
+                            _logger.LogInformation("Deleting existing collection {Collection} - content differs", collectionName);
+                            await _chromaService.DeleteCollectionAsync(collectionName);
+                        }
                     }
                 }
                 else

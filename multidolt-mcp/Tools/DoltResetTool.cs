@@ -110,8 +110,8 @@ public class DoltResetTool
             // Perform hard reset
             await _doltCli.ResetHardAsync(targetCommit);
 
-            // Sync ChromaDB with the new state
-            await _syncManager.FullSyncAsync();
+            // Sync ChromaDB with the new state - force sync to bypass count optimization after reset
+            await _syncManager.FullSyncAsync(forceSync: true);
 
             // Get new state
             var toCommit = await _doltCli.GetHeadCommitHashAsync();

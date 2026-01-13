@@ -106,11 +106,17 @@ namespace DMMS.Tools
                     ToolLoggingUtility.LogToolInfo(_logger, toolName, $"Using current branch as target: {target_branch}");
                 }
 
-                // Verify branches exist
-                var branches = await _doltCli.ListBranchesAsync();
-                var branchNames = branches.Select(b => b.Name).ToHashSet();
-                
-                if (!branchNames.Contains(source_branch))
+                // Verify branches exist (including remote branches)
+                var allBranches = await _doltCli.ListAllBranchesAsync();
+                var localBranchNames = allBranches.Where(b => !b.IsRemote).Select(b => b.Name).ToHashSet();
+                var remoteBranchNames = allBranches.Where(b => b.IsRemote)
+                    .Select(b => b.Name.Replace("remotes/origin/", ""))
+                    .ToHashSet();
+                var allBranchNames = localBranchNames.Union(remoteBranchNames).ToHashSet();
+
+                // Check if source branch exists (local or remote)
+                var sourceExists = await _doltCli.BranchExistsAsync(source_branch);
+                if (!sourceExists)
                 {
                     const string error = "SOURCE_BRANCH_NOT_FOUND";
                     var errorMessage = $"Source branch '{source_branch}' does not exist";
@@ -120,11 +126,15 @@ namespace DMMS.Tools
                         success = false,
                         error = error,
                         message = errorMessage,
-                        available_branches = branchNames.ToList()
+                        available_branches = allBranchNames.ToList(),
+                        local_branches = localBranchNames.ToList(),
+                        remote_branches = remoteBranchNames.ToList()
                     };
                 }
 
-                if (!branchNames.Contains(target_branch))
+                // Check if target branch exists (local or remote)
+                var targetExists = await _doltCli.BranchExistsAsync(target_branch);
+                if (!targetExists)
                 {
                     const string error = "TARGET_BRANCH_NOT_FOUND";
                     var errorMessage = $"Target branch '{target_branch}' does not exist";
@@ -134,8 +144,62 @@ namespace DMMS.Tools
                         success = false,
                         error = error,
                         message = errorMessage,
-                        available_branches = branchNames.ToList()
+                        available_branches = allBranchNames.ToList(),
+                        local_branches = localBranchNames.ToList(),
+                        remote_branches = remoteBranchNames.ToList()
                     };
+                }
+
+                // PP13-72-C4: Ensure branches are locally available for accurate conflict detection
+                // If a branch exists only remotely, create a local tracking branch
+                var currentBranch = await _doltCli.GetCurrentBranchAsync();
+
+                var sourceBranchLocal = await _doltCli.IsLocalBranchAsync(source_branch);
+                if (!sourceBranchLocal)
+                {
+                    _logger.LogInformation("PP13-72-C4: Source branch '{Branch}' is remote-only, creating local tracking branch", source_branch);
+                    var trackResult = await _doltCli.TrackRemoteBranchAsync(source_branch);
+                    if (!trackResult.Success)
+                    {
+                        const string error = "BRANCH_TRACK_FAILED";
+                        var errorMessage = $"Failed to create local tracking branch for '{source_branch}': {trackResult.Error}";
+                        ToolLoggingUtility.LogToolFailure(_logger, toolName, methodName, $"{error}: {errorMessage}");
+                        return new
+                        {
+                            success = false,
+                            error = error,
+                            message = errorMessage
+                        };
+                    }
+                    // Return to original branch after tracking
+                    if (!string.IsNullOrEmpty(currentBranch))
+                    {
+                        await _doltCli.CheckoutAsync(currentBranch);
+                    }
+                }
+
+                var targetBranchLocal = await _doltCli.IsLocalBranchAsync(target_branch);
+                if (!targetBranchLocal)
+                {
+                    _logger.LogInformation("PP13-72-C4: Target branch '{Branch}' is remote-only, creating local tracking branch", target_branch);
+                    var trackResult = await _doltCli.TrackRemoteBranchAsync(target_branch);
+                    if (!trackResult.Success)
+                    {
+                        const string error = "BRANCH_TRACK_FAILED";
+                        var errorMessage = $"Failed to create local tracking branch for '{target_branch}': {trackResult.Error}";
+                        ToolLoggingUtility.LogToolFailure(_logger, toolName, methodName, $"{error}: {errorMessage}");
+                        return new
+                        {
+                            success = false,
+                            error = error,
+                            message = errorMessage
+                        };
+                    }
+                    // Return to original branch after tracking
+                    if (!string.IsNullOrEmpty(currentBranch))
+                    {
+                        await _doltCli.CheckoutAsync(currentBranch);
+                    }
                 }
 
                 // Check for local changes
@@ -197,6 +261,13 @@ namespace DMMS.Tools
                         conflict_type = c.Type.ToString().ToLowerInvariant(),
                         auto_resolvable = c.AutoResolvable,
                         suggested_resolution = c.SuggestedResolution,
+                        // Include content fields when detailed_diff is requested
+                        base_content = detailed_diff ? c.BaseContent : null,
+                        ours_content = detailed_diff ? c.OursContent : null,
+                        theirs_content = detailed_diff ? c.TheirsContent : null,
+                        base_content_hash = c.BaseContentHash,
+                        ours_content_hash = c.OursContentHash,
+                        theirs_content_hash = c.TheirsContentHash,
                         field_conflicts = c.FieldConflicts?.Select(fc => (object)new
                         {
                             field = fc.FieldName,

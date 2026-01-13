@@ -1229,7 +1229,8 @@ public class ChromaPythonService : IChromaDbService, IDisposable
     }
 
     /// <summary>
-    /// Converts a Python dictionary to C# dictionary
+    /// Converts a Python dictionary to C# dictionary.
+    /// Properly handles Python types including bool, int, float, and str.
     /// </summary>
     private Dictionary<string, object> ConvertPyDictToDictionary(dynamic pyDict)
     {
@@ -1241,14 +1242,53 @@ public class ChromaPythonService : IChromaDbService, IDisposable
         {
             string keyStr = key.ToString();
             var value = pyDict[key];
-            
+
             if (value is PyObject pyObj)
             {
                 var pyType = pyObj.GetPythonType();
-                if (pyObj.HasAttr("__iter__") && !pyType.Name.Equals("str"))
+                var typeName = pyType.Name.ToString();
+
+                // Handle Python boolean - must check before other types
+                if (typeName.Equals("bool"))
+                {
+                    // Python bool toString() returns "True" or "False"
+                    result[keyStr] = value.ToString().Equals("True", StringComparison.OrdinalIgnoreCase);
+                }
+                // Handle Python integer
+                else if (typeName.Equals("int"))
+                {
+                    if (long.TryParse(value.ToString(), out long longVal))
+                    {
+                        // Use int if it fits, otherwise long
+                        if (longVal >= int.MinValue && longVal <= int.MaxValue)
+                            result[keyStr] = (int)longVal;
+                        else
+                            result[keyStr] = longVal;
+                    }
+                    else
+                    {
+                        result[keyStr] = value.ToString();
+                    }
+                }
+                // Handle Python float
+                else if (typeName.Equals("float"))
+                {
+                    if (double.TryParse(value.ToString(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double doubleVal))
+                    {
+                        result[keyStr] = doubleVal;
+                    }
+                    else
+                    {
+                        result[keyStr] = value.ToString();
+                    }
+                }
+                // Handle iterable types (lists, etc.) but not strings
+                else if (pyObj.HasAttr("__iter__") && !typeName.Equals("str"))
                 {
                     result[keyStr] = ConvertPyListToList(value);
                 }
+                // Handle strings and other types
                 else
                 {
                     result[keyStr] = value.ToString();

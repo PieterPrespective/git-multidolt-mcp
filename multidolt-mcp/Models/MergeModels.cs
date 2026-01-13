@@ -61,6 +61,36 @@ namespace DMMS.Models
         /// Values from their branch (source branch)
         /// </summary>
         public Dictionary<string, object> TheirValues { get; set; } = new();
+
+        /// <summary>
+        /// Document content from the merge base (common ancestor)
+        /// </summary>
+        public string? BaseContent { get; set; }
+
+        /// <summary>
+        /// Document content from our branch (target branch)
+        /// </summary>
+        public string? OursContent { get; set; }
+
+        /// <summary>
+        /// Document content from their branch (source branch)
+        /// </summary>
+        public string? TheirsContent { get; set; }
+
+        /// <summary>
+        /// Content hash from the merge base for change detection
+        /// </summary>
+        public string? BaseContentHash { get; set; }
+
+        /// <summary>
+        /// Content hash from our branch for change detection
+        /// </summary>
+        public string? OursContentHash { get; set; }
+
+        /// <summary>
+        /// Content hash from their branch for change detection
+        /// </summary>
+        public string? TheirsContentHash { get; set; }
     }
 
     /// <summary>
@@ -396,6 +426,79 @@ namespace DMMS.Models
         /// Human-readable description of what this resolution does
         /// </summary>
         public string Description { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// PP13-73-C3: Result of batch conflict resolution.
+    /// Contains overall success status and per-conflict resolution details.
+    /// </summary>
+    public class BatchResolutionResult
+    {
+        /// <summary>
+        /// Whether all conflicts were successfully resolved
+        /// </summary>
+        public bool Success { get; set; }
+
+        /// <summary>
+        /// Total number of conflicts that were attempted
+        /// </summary>
+        public int TotalAttempted { get; set; }
+
+        /// <summary>
+        /// Number of conflicts successfully resolved
+        /// </summary>
+        public int SuccessfullyResolved { get; set; }
+
+        /// <summary>
+        /// Number of conflicts that failed to resolve
+        /// </summary>
+        public int FailedCount { get; set; }
+
+        /// <summary>
+        /// Error message if batch resolution failed
+        /// </summary>
+        public string? ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Per-conflict resolution results
+        /// </summary>
+        public List<ConflictResolutionOutcome> ResolutionOutcomes { get; set; } = new();
+    }
+
+    /// <summary>
+    /// PP13-73-C3: Outcome of resolving a single conflict within a batch.
+    /// </summary>
+    public class ConflictResolutionOutcome
+    {
+        /// <summary>
+        /// The conflict ID that was resolved
+        /// </summary>
+        public string ConflictId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Document ID of the resolved conflict
+        /// </summary>
+        public string DocumentId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Collection name of the resolved conflict
+        /// </summary>
+        public string CollectionName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Resolution strategy that was applied
+        /// </summary>
+        public ResolutionType ResolutionType { get; set; }
+
+        /// <summary>
+        /// Whether this individual resolution succeeded
+        /// </summary>
+        public bool Success { get; set; }
+
+        /// <summary>
+        /// Error message if this resolution failed (only set on failure)
+        /// </summary>
+        public string? ErrorMessage { get; set; }
     }
 
     /// <summary>

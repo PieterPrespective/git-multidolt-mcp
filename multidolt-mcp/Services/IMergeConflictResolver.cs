@@ -49,5 +49,15 @@ namespace DMMS.Services
             string tableName,
             string documentId,
             Dictionary<string, object> customValues);
+
+        /// <summary>
+        /// PP13-73-C3: Resolve multiple conflicts in a single transaction.
+        /// Dolt requires ALL conflicts to be resolved before COMMIT is allowed.
+        /// This method collects all resolution SQL statements and executes them atomically.
+        /// </summary>
+        /// <param name="conflictResolutions">List of (conflict, resolution) tuples to resolve</param>
+        /// <returns>BatchResolutionResult with per-conflict outcomes and overall success</returns>
+        Task<BatchResolutionResult> ResolveBatchAsync(
+            List<(DetailedConflictInfo Conflict, ConflictResolutionRequest Resolution)> conflictResolutions);
     }
 }

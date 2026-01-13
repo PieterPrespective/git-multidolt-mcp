@@ -30,14 +30,18 @@ namespace DMMS.Testing.UnitTests
         public async Task AnalyzeMergeAsync_NoConflicts_ReturnsCanAutoMergeTrue()
         {
             // Arrange
+            // PP13-72-C2: Use empty object "{}" instead of "[]" to avoid triggering fallback
+            // An empty object means "successful auto-merge, no conflicts" in Dolt's response
             _mockDoltCli.Setup(x => x.PreviewMergeConflictsAsync("source", "target"))
-                .ReturnsAsync("[]");
+                .ReturnsAsync("{}");
             _mockDoltCli.Setup(x => x.GetHeadCommitHashAsync())
                 .ReturnsAsync("abc123");
-            
+            _mockDoltCli.Setup(x => x.GetMergeBaseAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync("merge-base-123");
+
             // Mock for diff command used in GenerateMergePreview
             var mockDiffResult = new DoltCommandResult(true, "1 table changed, 0 rows added, 0 rows modified, 0 rows deleted", "", 0);
-            
+
             // Note: The actual method uses reflection to call ExecuteDoltCommandAsync which is not mockable
             // The fallback will use placeholder data, which is acceptable for this test
 
@@ -55,22 +59,18 @@ namespace DMMS.Testing.UnitTests
         public async Task AnalyzeMergeAsync_WithConflicts_ParsesCorrectly()
         {
             // Arrange
+            // PP13-72-C2: Use document-level conflict array format
+            // The IsDoltTableLevelSummary check looks for rows with num_data_conflicts,
+            // so document-level conflicts should pass through without fallback
             var conflictJson = """
                 [
                     {
-                        "table_name": "documents",
+                        "collection": "documents",
                         "document_id": "doc123",
-                        "conflict_type": "content_modification",
-                        "our_row": {
-                            "id": "doc123",
-                            "content": "Our version",
-                            "metadata": "our_meta"
-                        },
-                        "their_row": {
-                            "id": "doc123", 
-                            "content": "Their version",
-                            "metadata": "their_meta"
-                        }
+                        "conflict_type": "contentmodification",
+                        "base_content": "Base version",
+                        "our_content": "Our version",
+                        "their_content": "Their version"
                     }
                 ]
                 """;
@@ -79,12 +79,15 @@ namespace DMMS.Testing.UnitTests
                 .ReturnsAsync(conflictJson);
             _mockDoltCli.Setup(x => x.GetHeadCommitHashAsync())
                 .ReturnsAsync("abc123");
+            // PP13-72-C2: Add GetMergeBaseAsync mock for GenerateMergePreview step
+            _mockDoltCli.Setup(x => x.GetMergeBaseAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync("merge-base-123");
 
             // Act
             var result = await _conflictAnalyzer.AnalyzeMergeAsync("source", "target", true, false);
 
             // Assert
-            Assert.That(result.Success, Is.True);
+            Assert.That(result.Success, Is.True, $"Expected Success to be True but was False. Error: {result.Message}");
             Assert.That(result.TotalConflictsDetected, Is.EqualTo(1));
             Assert.That(result.Conflicts.Count, Is.EqualTo(1));
 
@@ -532,5 +535,259 @@ namespace DMMS.Testing.UnitTests
             Assert.That(result[1].DocumentId, Is.EqualTo("doc2"));
             Assert.That(result.All(c => c.Collection == tableName), Is.True);
         }
+
+        #region PP13-71 Tests: Document-Level Conflict Detection
+
+        /// <summary>
+        /// PP13-71: Verifies that when both branches modify the same document content
+        /// differently, it is NOT auto-resolvable.
+        /// </summary>
+        [Test]
+        public async Task PP13_71_CanAutoResolve_BothBranchesModifySameContentDifferently_ReturnsFalse()
+        {
+            // Arrange - Both branches modified same document with different content
+            var conflict = new DetailedConflictInfo
+            {
+                ConflictId = "test_conflict",
+                Collection = "main",
+                DocumentId = "someid1",
+                Type = ConflictType.ContentModification,
+                BaseContent = "this is test content for document1",
+                OursContent = "this is test content for document1 changed on merge test branch 2",
+                TheirsContent = "this is test content for document1 changed on merge test branch 1"
+            };
+
+            // Act
+            var result = await _conflictAnalyzer.CanAutoResolveConflictAsync(conflict);
+
+            // Assert - Should NOT be auto-resolvable because both branches changed the same content differently
+            Assert.That(result, Is.False,
+                "When both branches modify the same document content differently, it should NOT be auto-resolvable");
+        }
+
+        /// <summary>
+        /// PP13-71: Verifies that when both branches make identical changes, it IS auto-resolvable.
+        /// </summary>
+        [Test]
+        public async Task PP13_71_CanAutoResolve_BothBranchesMakeIdenticalChanges_ReturnsTrue()
+        {
+            // Arrange - Both branches made identical changes
+            var conflict = new DetailedConflictInfo
+            {
+                ConflictId = "test_conflict",
+                Collection = "main",
+                DocumentId = "someid1",
+                Type = ConflictType.ContentModification,
+                BaseContent = "original content",
+                OursContent = "updated content - identical change",
+                TheirsContent = "updated content - identical change"
+            };
+
+            // Act
+            var result = await _conflictAnalyzer.CanAutoResolveConflictAsync(conflict);
+
+            // Assert - Should be auto-resolvable because both branches made the same change
+            Assert.That(result, Is.True,
+                "When both branches make identical changes, it should be auto-resolvable");
+        }
+
+        /// <summary>
+        /// PP13-71: Verifies that when only one branch modified the document, it IS auto-resolvable.
+        /// </summary>
+        [Test]
+        public async Task PP13_71_CanAutoResolve_OnlyOneBranchModified_ReturnsTrue()
+        {
+            // Arrange - Only source branch modified the document
+            var conflict = new DetailedConflictInfo
+            {
+                ConflictId = "test_conflict",
+                Collection = "main",
+                DocumentId = "someid1",
+                Type = ConflictType.ContentModification,
+                BaseContent = "original content",
+                OursContent = "original content",  // Target didn't change
+                TheirsContent = "modified content by source"  // Source changed
+            };
+
+            // Act
+            var result = await _conflictAnalyzer.CanAutoResolveConflictAsync(conflict);
+
+            // Assert - Should be auto-resolvable because only one branch made changes
+            Assert.That(result, Is.True,
+                "When only one branch modified the document, it should be auto-resolvable");
+        }
+
+        /// <summary>
+        /// PP13-71: Verifies that delete-modify conflicts are NOT auto-resolvable.
+        /// </summary>
+        [Test]
+        public async Task PP13_71_CanAutoResolve_DeleteModifyConflict_ReturnsFalse()
+        {
+            // Arrange - One branch deleted, other modified
+            var conflict = new DetailedConflictInfo
+            {
+                ConflictId = "test_conflict",
+                Collection = "main",
+                DocumentId = "someid1",
+                Type = ConflictType.DeleteModify
+            };
+
+            // Act
+            var result = await _conflictAnalyzer.CanAutoResolveConflictAsync(conflict);
+
+            // Assert
+            Assert.That(result, Is.False,
+                "Delete-modify conflicts should NOT be auto-resolvable");
+        }
+
+        /// <summary>
+        /// PP13-71: Verifies that internal tables are correctly identified.
+        /// </summary>
+        [Test]
+        public void PP13_71_IsInternalTable_CorrectlyIdentifiesInternalTables()
+        {
+            // Access the private static method via reflection
+            var isInternalMethod = typeof(ConflictAnalyzer).GetMethod(
+                "IsInternalTable",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            Assert.That(isInternalMethod, Is.Not.Null, "IsInternalTable method should exist");
+
+            // Test internal tables that should be filtered
+            var internalTables = new[]
+            {
+                "chroma_sync_state",
+                "document_sync_log",
+                "sync_operations",
+                "local_changes",
+                "collections",
+                "dolt_docs",
+                "dolt_ignore",
+                "__internal_temp"
+            };
+
+            foreach (var table in internalTables)
+            {
+                var result = (bool)isInternalMethod.Invoke(null, new object[] { table });
+                Assert.That(result, Is.True, $"'{table}' should be identified as internal table");
+            }
+
+            // Test user tables that should NOT be filtered
+            var userTables = new[]
+            {
+                "main",
+                "documents",
+                "my_collection",
+                "user_data"
+            };
+
+            foreach (var table in userTables)
+            {
+                var result = (bool)isInternalMethod.Invoke(null, new object[] { table });
+                Assert.That(result, Is.False, $"'{table}' should NOT be identified as internal table");
+            }
+        }
+
+        /// <summary>
+        /// PP13-71: Verifies that conflict parsing extracts new content fields correctly.
+        /// </summary>
+        [Test]
+        public void PP13_71_ParseConflict_ExtractsContentFields()
+        {
+            // Arrange - JSON with new content fields from three-way diff
+            var conflictJson = """
+                {
+                    "collection": "main",
+                    "document_id": "someid1",
+                    "conflict_type": "contentmodification",
+                    "base_content": "original content",
+                    "our_content": "target branch content",
+                    "their_content": "source branch content",
+                    "base_content_hash": "abc123",
+                    "our_content_hash": "def456",
+                    "their_content_hash": "ghi789"
+                }
+                """;
+
+            var jsonDoc = JsonDocument.Parse(conflictJson);
+
+            // Use reflection to access private method
+            var parseMethod = typeof(ConflictAnalyzer).GetMethod(
+                "ParseSingleConflictElement",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+            // Act
+            var result = parseMethod?.Invoke(_conflictAnalyzer, new object[] { jsonDoc.RootElement })
+                as DetailedConflictInfo;
+
+            // Assert
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Collection, Is.EqualTo("main"));
+            Assert.That(result.DocumentId, Is.EqualTo("someid1"));
+            Assert.That(result.BaseContent, Is.EqualTo("original content"));
+            Assert.That(result.OursContent, Is.EqualTo("target branch content"));
+            Assert.That(result.TheirsContent, Is.EqualTo("source branch content"));
+            Assert.That(result.BaseContentHash, Is.EqualTo("abc123"));
+            Assert.That(result.OursContentHash, Is.EqualTo("def456"));
+            Assert.That(result.TheirsContentHash, Is.EqualTo("ghi789"));
+        }
+
+        /// <summary>
+        /// PP13-71: Verifies that DetailedConflictInfo model has the new content fields.
+        /// </summary>
+        [Test]
+        public void PP13_71_DetailedConflictInfo_HasContentFields()
+        {
+            // Arrange & Act
+            var conflict = new DetailedConflictInfo
+            {
+                BaseContent = "base",
+                OursContent = "ours",
+                TheirsContent = "theirs",
+                BaseContentHash = "basehash",
+                OursContentHash = "ourshash",
+                TheirsContentHash = "theirshash"
+            };
+
+            // Assert
+            Assert.That(conflict.BaseContent, Is.EqualTo("base"));
+            Assert.That(conflict.OursContent, Is.EqualTo("ours"));
+            Assert.That(conflict.TheirsContent, Is.EqualTo("theirs"));
+            Assert.That(conflict.BaseContentHash, Is.EqualTo("basehash"));
+            Assert.That(conflict.OursContentHash, Is.EqualTo("ourshash"));
+            Assert.That(conflict.TheirsContentHash, Is.EqualTo("theirshash"));
+        }
+
+        /// <summary>
+        /// PP13-71: Verifies the suggested resolution for non-auto-resolvable conflicts.
+        /// </summary>
+        [Test]
+        public void PP13_71_SuggestedResolution_ManualReviewForNonAutoResolvable()
+        {
+            // Use reflection to access private method
+            var determineResolutionMethod = typeof(ConflictAnalyzer).GetMethod(
+                "DetermineSuggestedResolution",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                null,
+                new[] { typeof(DetailedConflictInfo) },
+                null);
+
+            Assert.That(determineResolutionMethod, Is.Not.Null);
+
+            // Arrange - Non-auto-resolvable conflict
+            var conflict = new DetailedConflictInfo
+            {
+                Type = ConflictType.ContentModification,
+                AutoResolvable = false
+            };
+
+            // Act
+            var result = determineResolutionMethod.Invoke(_conflictAnalyzer, new object[] { conflict }) as string;
+
+            // Assert
+            Assert.That(result, Is.EqualTo("manual_review"));
+        }
+
+        #endregion
     }
 }

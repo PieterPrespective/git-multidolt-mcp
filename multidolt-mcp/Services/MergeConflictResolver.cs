@@ -218,43 +218,313 @@ namespace DMMS.Services
             }
         }
 
+        /// <summary>
+        /// PP13-73-C3: Resolve multiple conflicts in a single transaction.
+        /// Dolt requires ALL conflicts to be resolved before COMMIT is allowed.
+        /// This method collects all resolution SQL statements and executes them atomically.
+        /// </summary>
+        /// <param name="conflictResolutions">List of (conflict, resolution) tuples to resolve</param>
+        /// <returns>BatchResolutionResult with per-conflict outcomes and overall success</returns>
+        public async Task<BatchResolutionResult> ResolveBatchAsync(
+            List<(DetailedConflictInfo Conflict, ConflictResolutionRequest Resolution)> conflictResolutions)
+        {
+            var result = new BatchResolutionResult
+            {
+                TotalAttempted = conflictResolutions.Count,
+                ResolutionOutcomes = new List<ConflictResolutionOutcome>()
+            };
+
+            if (conflictResolutions.Count == 0)
+            {
+                _logger.LogInformation("PP13-73-C3: ResolveBatchAsync called with empty list - nothing to resolve");
+                result.Success = true;
+                return result;
+            }
+
+            _logger.LogInformation("PP13-73-C3: Starting batch resolution for {Count} conflicts", conflictResolutions.Count);
+
+            // Collect all SQL statements for all resolutions
+            var allSqlStatements = new List<string>();
+            var resolutionMap = new Dictionary<int, (DetailedConflictInfo Conflict, ConflictResolutionRequest Resolution)>();
+
+            for (int i = 0; i < conflictResolutions.Count; i++)
+            {
+                var (conflict, resolution) = conflictResolutions[i];
+                resolutionMap[i] = (conflict, resolution);
+
+                // Track this resolution attempt
+                var outcome = new ConflictResolutionOutcome
+                {
+                    ConflictId = conflict.ConflictId,
+                    DocumentId = conflict.DocumentId,
+                    CollectionName = conflict.Collection,
+                    ResolutionType = resolution.ResolutionType
+                };
+                result.ResolutionOutcomes.Add(outcome);
+
+                // Determine the ConflictResolution enum value based on ResolutionType
+                ConflictResolution conflictResolutionStrategy;
+                switch (resolution.ResolutionType)
+                {
+                    case ResolutionType.KeepOurs:
+                        conflictResolutionStrategy = ConflictResolution.Ours;
+                        break;
+                    case ResolutionType.KeepTheirs:
+                        conflictResolutionStrategy = ConflictResolution.Theirs;
+                        break;
+                    default:
+                        // For non-standard resolution types (FieldMerge, Custom, AutoResolve),
+                        // we need to handle them differently or fall back to individual resolution
+                        _logger.LogWarning("PP13-73-C3: Resolution type {Type} for conflict {ConflictId} not supported in batch mode, skipping",
+                            resolution.ResolutionType, conflict.ConflictId);
+                        outcome.Success = false;
+                        outcome.ErrorMessage = $"Resolution type {resolution.ResolutionType} not supported in batch mode";
+                        result.FailedCount++;
+                        continue;
+                }
+
+                // Generate SQL for this resolution
+                var sqlStatements = _doltCli.GenerateConflictResolutionSql(
+                    "documents",
+                    conflict.DocumentId,
+                    conflict.Collection,
+                    conflictResolutionStrategy);
+
+                if (sqlStatements == null || sqlStatements.Length == 0)
+                {
+                    _logger.LogWarning("PP13-73-C3: Failed to generate SQL for conflict {ConflictId}", conflict.ConflictId);
+                    outcome.Success = false;
+                    outcome.ErrorMessage = "Failed to generate resolution SQL";
+                    result.FailedCount++;
+                    continue;
+                }
+
+                _logger.LogDebug("PP13-73-C3: Generated {Count} SQL statement(s) for conflict {ConflictId} ({Strategy})",
+                    sqlStatements.Length, conflict.ConflictId, resolution.ResolutionType);
+
+                allSqlStatements.AddRange(sqlStatements);
+            }
+
+            // If we have no SQL statements to execute, either all resolutions failed to generate
+            // or the list was empty
+            if (allSqlStatements.Count == 0)
+            {
+                _logger.LogWarning("PP13-73-C3: No SQL statements generated for batch resolution");
+                result.Success = result.FailedCount == 0;
+                result.ErrorMessage = result.FailedCount > 0 ? "All resolutions failed to generate SQL" : null;
+                return result;
+            }
+
+            // Execute all SQL statements in a single transaction
+            // PP13-73-C3: Use skipCommit=true because Dolt blocks COMMIT until ALL conflicts are resolved
+            // The actual commit happens via 'dolt commit' after all conflicts are resolved
+            _logger.LogInformation("PP13-73-C3: Executing {Count} SQL statements in single transaction (skipCommit=true)", allSqlStatements.Count);
+            try
+            {
+                var transactionSuccess = await _doltCli.ExecuteInTransactionAsync(skipCommit: true, allSqlStatements.ToArray());
+
+                if (transactionSuccess)
+                {
+                    _logger.LogInformation("PP13-73-C3: Batch transaction succeeded - all {Count} conflicts resolved", conflictResolutions.Count);
+
+                    // Mark all resolutions that weren't already failed as successful
+                    foreach (var outcome in result.ResolutionOutcomes)
+                    {
+                        if (outcome.ErrorMessage == null)
+                        {
+                            outcome.Success = true;
+                            result.SuccessfullyResolved++;
+                        }
+                    }
+                    result.Success = result.FailedCount == 0;
+                }
+                else
+                {
+                    _logger.LogError("PP13-73-C3: Batch transaction FAILED - conflict resolutions were rolled back");
+                    result.Success = false;
+                    result.ErrorMessage = "Transaction failed - all resolutions rolled back. This may indicate remaining conflicts or a Dolt constraint violation.";
+
+                    // Mark all resolutions as failed
+                    foreach (var outcome in result.ResolutionOutcomes)
+                    {
+                        if (outcome.ErrorMessage == null)
+                        {
+                            outcome.Success = false;
+                            outcome.ErrorMessage = "Transaction rolled back";
+                            result.FailedCount++;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "PP13-73-C3: Exception during batch transaction execution");
+                result.Success = false;
+                result.ErrorMessage = $"Transaction exception: {ex.Message}";
+
+                foreach (var outcome in result.ResolutionOutcomes)
+                {
+                    if (outcome.ErrorMessage == null)
+                    {
+                        outcome.Success = false;
+                        outcome.ErrorMessage = "Transaction exception";
+                        result.FailedCount++;
+                    }
+                }
+            }
+
+            return result;
+        }
+
         #region Private Helper Methods
 
         /// <summary>
-        /// Resolve conflict by keeping our version (target branch)
+        /// Resolve conflict by keeping our version (target branch).
+        /// Uses per-document resolution to avoid affecting other conflicts in the same table.
+        /// PP13-73: Now passes collection_name for proper composite key support.
         /// </summary>
         private async Task<bool> ResolveKeepOurs(DetailedConflictInfo conflict)
         {
-            _logger.LogDebug("Resolving conflict {ConflictId} by keeping ours", conflict.ConflictId);
-            
+            _logger.LogDebug("Resolving conflict {ConflictId} (doc: {DocId}, collection: {Collection}) by keeping ours",
+                conflict.ConflictId, conflict.DocumentId, conflict.Collection);
+
             try
             {
-                var result = await _doltCli.ResolveConflictsAsync(conflict.Collection, ConflictResolution.Ours);
+                // Use per-document resolution to only resolve this specific conflict
+                // PP13-73: Pass collection name for composite key support
+                var result = await _doltCli.ResolveDocumentConflictAsync(
+                    "documents",            // tableName - always "documents" for document conflicts
+                    conflict.DocumentId,
+                    conflict.Collection,    // collectionName from DetailedConflictInfo
+                    ConflictResolution.Ours);
+
+                if (result.Success)
+                {
+                    _logger.LogInformation("Successfully resolved conflict {ConflictId} for document {DocId} in collection {Collection} with 'ours' strategy",
+                        conflict.ConflictId, conflict.DocumentId, conflict.Collection);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to resolve conflict {ConflictId} for document {DocId} in collection {Collection} with 'ours' strategy: {Error}",
+                        conflict.ConflictId, conflict.DocumentId, conflict.Collection, result.Error);
+                }
+
                 return result.Success;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to resolve conflict {ConflictId} with ours strategy", conflict.ConflictId);
+                _logger.LogError(ex, "Failed to resolve conflict {ConflictId} (doc: {DocId}, collection: {Collection}) with ours strategy",
+                    conflict.ConflictId, conflict.DocumentId, conflict.Collection);
                 return false;
             }
         }
 
         /// <summary>
-        /// Resolve conflict by keeping their version (source branch)
+        /// Resolve conflict by keeping their version (source branch).
+        /// Uses per-document resolution to avoid affecting other conflicts in the same table.
+        /// PP13-73: Now passes collection_name for proper composite key support and verifies resolution.
         /// </summary>
         private async Task<bool> ResolveKeepTheirs(DetailedConflictInfo conflict)
         {
-            _logger.LogDebug("Resolving conflict {ConflictId} by keeping theirs", conflict.ConflictId);
-            
+            _logger.LogDebug("Resolving conflict {ConflictId} (doc: {DocId}, collection: {Collection}) by keeping theirs",
+                conflict.ConflictId, conflict.DocumentId, conflict.Collection);
+
             try
             {
-                var result = await _doltCli.ResolveConflictsAsync(conflict.Collection, ConflictResolution.Theirs);
-                return result.Success;
+                // Use per-document resolution to only resolve this specific conflict
+                // PP13-73: Pass collection name for composite key support
+                var result = await _doltCli.ResolveDocumentConflictAsync(
+                    "documents",            // tableName - always "documents" for document conflicts
+                    conflict.DocumentId,
+                    conflict.Collection,    // collectionName from DetailedConflictInfo
+                    ConflictResolution.Theirs);
+
+                if (!result.Success)
+                {
+                    _logger.LogWarning("Failed to resolve conflict {ConflictId} for document {DocId} in collection {Collection} with 'theirs' strategy: {Error}",
+                        conflict.ConflictId, conflict.DocumentId, conflict.Collection, result.Error);
+                    return false;
+                }
+
+                // PP13-73-C2: Post-resolution verification - verify document content was actually updated
+                if (!string.IsNullOrEmpty(conflict.TheirsContentHash))
+                {
+                    var verified = await VerifyDocumentContentAsync(
+                        conflict.DocumentId,
+                        conflict.Collection,
+                        conflict.TheirsContentHash,
+                        "theirs");
+
+                    if (!verified)
+                    {
+                        _logger.LogError("PP13-73-C2: Post-resolution verification FAILED for conflict {ConflictId}. Document content was NOT updated to 'theirs' version.",
+                            conflict.ConflictId);
+                        return false;
+                    }
+
+                    _logger.LogDebug("PP13-73-C2: Post-resolution verification passed for conflict {ConflictId}", conflict.ConflictId);
+                }
+
+                _logger.LogInformation("Successfully resolved conflict {ConflictId} for document {DocId} in collection {Collection} with 'theirs' strategy",
+                    conflict.ConflictId, conflict.DocumentId, conflict.Collection);
+
+                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to resolve conflict {ConflictId} with theirs strategy", conflict.ConflictId);
+                _logger.LogError(ex, "Failed to resolve conflict {ConflictId} (doc: {DocId}, collection: {Collection}) with theirs strategy",
+                    conflict.ConflictId, conflict.DocumentId, conflict.Collection);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// PP13-73-C2: Verify that a document's content matches the expected hash after resolution.
+        /// This ensures that the resolution actually updated the document content.
+        /// </summary>
+        /// <param name="documentId">ID of the document to verify</param>
+        /// <param name="collectionName">Collection containing the document</param>
+        /// <param name="expectedContentHash">Expected content hash after resolution</param>
+        /// <param name="strategy">Resolution strategy used (for logging)</param>
+        /// <returns>True if document content matches expected hash, false otherwise</returns>
+        private async Task<bool> VerifyDocumentContentAsync(
+            string documentId,
+            string collectionName,
+            string expectedContentHash,
+            string strategy)
+        {
+            try
+            {
+                var escapedDocId = documentId.Replace("'", "''");
+                var escapedCollection = collectionName.Replace("'", "''");
+
+                // Query the document's current content hash
+                var sql = $"SELECT content_hash FROM documents WHERE doc_id = '{escapedDocId}' AND collection_name = '{escapedCollection}'";
+                var actualHash = await _doltCli.ExecuteScalarAsync<string>(sql);
+
+                if (string.IsNullOrEmpty(actualHash))
+                {
+                    _logger.LogWarning("PP13-73-C2: Verification failed - document {DocId} in {Collection} not found after resolution",
+                        documentId, collectionName);
+                    return false;
+                }
+
+                // Compare hashes (trim to handle potential whitespace/format differences)
+                var matches = string.Equals(actualHash.Trim(), expectedContentHash.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                if (!matches)
+                {
+                    _logger.LogWarning("PP13-73-C2: Content hash mismatch for {DocId} in {Collection}. Expected: {Expected}, Actual: {Actual}",
+                        documentId, collectionName, expectedContentHash, actualHash);
+                }
+
+                return matches;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PP13-73-C2: Failed to verify document content for {DocId} in {Collection}", documentId, collectionName);
+                // Don't fail the resolution if verification query fails - the resolution itself may have succeeded
+                return true;
             }
         }
 

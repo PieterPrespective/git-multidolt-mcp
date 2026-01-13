@@ -41,9 +41,13 @@ namespace DMMS.Models
     // ==================== Information Types ====================
 
     /// <summary>
-    /// Information about a Dolt branch
+    /// Information about a Dolt branch including remote tracking branches
     /// </summary>
-    public record BranchInfo(string Name, bool IsCurrent, string LastCommitHash);
+    /// <param name="Name">Branch name (may include 'remotes/origin/' prefix for remote branches)</param>
+    /// <param name="IsCurrent">Whether this is the currently checked out branch</param>
+    /// <param name="LastCommitHash">The last commit hash on this branch</param>
+    /// <param name="IsRemote">Whether this is a remote tracking branch</param>
+    public record BranchInfo(string Name, bool IsCurrent, string LastCommitHash, bool IsRemote = false);
 
     /// <summary>
     /// Information about a Dolt commit

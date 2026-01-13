@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CliWrap;
@@ -342,7 +343,7 @@ namespace DMMS.Services
         public async Task<IEnumerable<BranchInfo>> ListBranchesAsync()
         {
             var result = await ExecuteDoltCommandAsync("branch", "-v");
-            if (!result.Success) 
+            if (!result.Success)
                 return Enumerable.Empty<BranchInfo>();
 
             var branches = new List<BranchInfo>();
@@ -356,6 +357,247 @@ namespace DMMS.Services
                 }
             }
             return branches;
+        }
+
+        /// <summary>
+        /// Lists all branches including remote tracking branches.
+        /// Uses 'dolt branch -a -v' to get comprehensive branch listing.
+        /// Remote branches are prefixed with 'remotes/origin/' in the output.
+        /// </summary>
+        /// <returns>Collection of all branch information including remote branches</returns>
+        public async Task<IEnumerable<BranchInfo>> ListAllBranchesAsync()
+        {
+            var result = await ExecuteDoltCommandAsync("branch", "-a", "-v");
+            if (!result.Success)
+            {
+                _logger.LogWarning("[DoltCli.ListAllBranchesAsync] Command failed: {Error}", result.Error);
+                return Enumerable.Empty<BranchInfo>();
+            }
+
+            var branches = new List<BranchInfo>();
+            foreach (var line in result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var isCurrent = line.StartsWith("*");
+                var trimmedLine = line.TrimStart('*', ' ');
+                var parts = trimmedLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+                if (parts.Length >= 2)
+                {
+                    var branchName = parts[0];
+                    var commitHash = parts[1];
+
+                    // Parse remote branch references (e.g., remotes/origin/branchname)
+                    var isRemote = branchName.StartsWith("remotes/");
+
+                    branches.Add(new BranchInfo(branchName, isCurrent, commitHash, isRemote));
+                }
+            }
+
+            if (_debugLogging)
+            {
+                var localCount = branches.Count(b => !b.IsRemote);
+                var remoteCount = branches.Count(b => b.IsRemote);
+                _logger.LogDebug("[DoltCli.ListAllBranchesAsync] Found {LocalCount} local and {RemoteCount} remote branches",
+                    localCount, remoteCount);
+            }
+
+            return branches;
+        }
+
+        /// <summary>
+        /// Checks if a branch exists either locally or as a remote tracking branch.
+        /// </summary>
+        /// <param name="branchName">Name of the branch to check (can be just the name or full remote path)</param>
+        /// <returns>True if branch exists locally or remotely</returns>
+        public async Task<bool> BranchExistsAsync(string branchName)
+        {
+            var allBranches = await ListAllBranchesAsync();
+
+            // Check exact match first
+            if (allBranches.Any(b => b.Name == branchName))
+            {
+                return true;
+            }
+
+            // Check for remote branch match (e.g., "mergetestbranch2" matches "remotes/origin/mergetestbranch2")
+            var remotePattern = $"remotes/origin/{branchName}";
+            if (allBranches.Any(b => b.Name == remotePattern))
+            {
+                return true;
+            }
+
+            // Also check if the branch name is a remote pattern itself
+            if (branchName.StartsWith("remotes/") && allBranches.Any(b => b.Name == branchName))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets the actual branch reference for a branch name, resolving remote references if needed.
+        /// </summary>
+        /// <param name="branchName">The branch name to resolve</param>
+        /// <returns>The actual branch reference to use for Dolt commands, or null if not found</returns>
+        public async Task<string?> ResolveBranchReferenceAsync(string branchName)
+        {
+            var allBranches = await ListAllBranchesAsync();
+
+            // Check for exact local branch match first
+            var localMatch = allBranches.FirstOrDefault(b => b.Name == branchName && !b.IsRemote);
+            if (localMatch != null)
+            {
+                return localMatch.Name;
+            }
+
+            // Check for remote branch match
+            var remotePattern = $"remotes/origin/{branchName}";
+            var remoteMatch = allBranches.FirstOrDefault(b => b.Name == remotePattern);
+            if (remoteMatch != null)
+            {
+                return remoteMatch.Name;
+            }
+
+            // Check if the provided name is already a full remote reference
+            if (branchName.StartsWith("remotes/"))
+            {
+                var fullRemoteMatch = allBranches.FirstOrDefault(b => b.Name == branchName);
+                if (fullRemoteMatch != null)
+                {
+                    return fullRemoteMatch.Name;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// PP13-72-C4: Check if a branch exists locally (not just as a remote tracking branch).
+        /// </summary>
+        /// <param name="branchName">Name of the branch to check</param>
+        /// <returns>True if branch exists as a local branch, false if only remote or doesn't exist</returns>
+        public async Task<bool> IsLocalBranchAsync(string branchName)
+        {
+            var allBranches = await ListAllBranchesAsync();
+
+            // Check for exact local branch match (not remote)
+            var isLocal = allBranches.Any(b => b.Name == branchName && !b.IsRemote);
+
+            if (_debugLogging)
+            {
+                _logger.LogDebug("[DoltCli.IsLocalBranchAsync] Branch '{Branch}' is local: {IsLocal}", branchName, isLocal);
+            }
+
+            return isLocal;
+        }
+
+        /// <summary>
+        /// PP13-72-C4: Get the commit hash for a branch without checking it out.
+        /// Uses SQL HASHOF() function to retrieve the commit hash directly.
+        /// </summary>
+        /// <param name="branchName">Name of the branch (local or remote)</param>
+        /// <returns>Commit hash, or null if branch not found</returns>
+        public async Task<string?> GetBranchCommitHashAsync(string branchName)
+        {
+            try
+            {
+                // Try SQL HASHOF() approach first - works for local branches
+                var sql = $"SELECT HASHOF('{branchName}') as hash";
+                var json = await ExecuteSqlJsonAsync(sql);
+
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("rows", out var rows))
+                {
+                    var firstRow = rows.EnumerateArray().FirstOrDefault();
+                    if (firstRow.ValueKind != JsonValueKind.Undefined &&
+                        firstRow.TryGetProperty("hash", out var hash))
+                    {
+                        var hashValue = hash.GetString();
+                        if (!string.IsNullOrEmpty(hashValue))
+                        {
+                            if (_debugLogging)
+                            {
+                                _logger.LogDebug("[DoltCli.GetBranchCommitHashAsync] Got hash for '{Branch}' via HASHOF: {Hash}",
+                                    branchName, hashValue);
+                            }
+                            return hashValue;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("[DoltCli.GetBranchCommitHashAsync] HASHOF failed for '{Branch}': {Error}. Trying branch list fallback.",
+                    branchName, ex.Message);
+            }
+
+            // Fallback: Get hash from branch listing
+            try
+            {
+                var allBranches = await ListAllBranchesAsync();
+
+                // First try exact match
+                var branch = allBranches.FirstOrDefault(b => b.Name == branchName);
+                if (branch != null && !string.IsNullOrEmpty(branch.LastCommitHash))
+                {
+                    if (_debugLogging)
+                    {
+                        _logger.LogDebug("[DoltCli.GetBranchCommitHashAsync] Got hash for '{Branch}' via branch list: {Hash}",
+                            branchName, branch.LastCommitHash);
+                    }
+                    return branch.LastCommitHash;
+                }
+
+                // Try remote branch pattern
+                var remoteName = $"remotes/origin/{branchName}";
+                var remoteBranch = allBranches.FirstOrDefault(b => b.Name == remoteName);
+                if (remoteBranch != null && !string.IsNullOrEmpty(remoteBranch.LastCommitHash))
+                {
+                    if (_debugLogging)
+                    {
+                        _logger.LogDebug("[DoltCli.GetBranchCommitHashAsync] Got hash for '{Branch}' via remote branch list: {Hash}",
+                            branchName, remoteBranch.LastCommitHash);
+                    }
+                    return remoteBranch.LastCommitHash;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[DoltCli.GetBranchCommitHashAsync] Failed to get commit hash for branch '{Branch}'", branchName);
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// PP13-72-C4: Create a local tracking branch from a remote branch.
+        /// Equivalent to: dolt checkout -b branchName remotes/origin/branchName
+        /// </summary>
+        /// <param name="branchName">Name of the branch to track</param>
+        /// <param name="remote">Remote name (default: "origin")</param>
+        /// <returns>Command result with success/failure status</returns>
+        public async Task<DoltCommandResult> TrackRemoteBranchAsync(string branchName, string remote = "origin")
+        {
+            var remoteBranchRef = $"remotes/{remote}/{branchName}";
+
+            _logger.LogInformation("[DoltCli.TrackRemoteBranchAsync] Creating local tracking branch '{Branch}' from '{RemoteBranch}'",
+                branchName, remoteBranchRef);
+
+            // Use checkout -b to create and checkout a new local branch tracking the remote
+            var result = await ExecuteDoltCommandAsync("checkout", "-b", branchName, remoteBranchRef);
+
+            if (result.Success)
+            {
+                _logger.LogInformation("[DoltCli.TrackRemoteBranchAsync] Successfully created local tracking branch '{Branch}'", branchName);
+            }
+            else
+            {
+                _logger.LogWarning("[DoltCli.TrackRemoteBranchAsync] Failed to create tracking branch '{Branch}': {Error}",
+                    branchName, result.Error);
+            }
+
+            return result;
         }
 
         public async Task<DoltCommandResult> CheckoutAsync(string branchName, bool createNew = false)
@@ -648,6 +890,103 @@ namespace DMMS.Services
         }
 
         /// <summary>
+        /// PP13-73: Check if a specific table has unresolved merge conflicts.
+        /// Uses the dolt_conflicts_tablename system table to check for conflicts.
+        /// </summary>
+        /// <param name="tableName">Name of the table to check for conflicts</param>
+        /// <returns>True if the table has conflicts, false otherwise</returns>
+        public async Task<bool> HasConflictsInTableAsync(string tableName)
+        {
+            try
+            {
+                // Query the conflict table to see if it has any rows
+                var conflictTableName = $"dolt_conflicts_{tableName}";
+                var sql = $"SELECT COUNT(*) AS conflict_count FROM {conflictTableName}";
+
+                var count = await ExecuteScalarAsync<int>(sql);
+                return count > 0;
+            }
+            catch (DoltException ex) when (ex.Message.Contains("table not found") ||
+                                           ex.Message.Contains("doesn't exist") ||
+                                           ex.Message.Contains("Unknown table"))
+            {
+                // No conflict table exists for this table, so no conflicts
+                _logger.LogDebug("[DoltCli.HasConflictsInTableAsync] No conflict table found for {Table}: {Error}",
+                    tableName, ex.Message);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[DoltCli.HasConflictsInTableAsync] Error checking conflicts for table {Table}", tableName);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// PP13-73-C2: Check if a merge is currently in progress with unresolved conflicts.
+        /// Used to detect stale merge state from failed previous merge attempts.
+        /// A merge is considered "in progress" if any dolt_conflicts_* table has rows.
+        /// </summary>
+        /// <returns>True if there's a merge in progress with unresolved conflicts, false otherwise</returns>
+        public async Task<bool> IsMergeInProgressAsync()
+        {
+            try
+            {
+                // Use the existing HasConflictsAsync method which is already proven to work
+                var hasConflicts = await HasConflictsAsync();
+                _logger.LogDebug("[DoltCli.IsMergeInProgressAsync] Merge in progress (HasConflictsAsync): {InProgress}", hasConflicts);
+
+                if (hasConflicts)
+                {
+                    return true;
+                }
+
+                // Also check if there's an active merge by looking at dolt status
+                // During a merge, status shows "MERGING" or contains merge information
+                var statusResult = await ExecuteDoltCommandAsync("status");
+                if (statusResult.Success && statusResult.Output != null)
+                {
+                    var output = statusResult.Output.ToUpperInvariant();
+                    var isMerging = output.Contains("MERGING") ||
+                                    output.Contains("MERGE IN PROGRESS") ||
+                                    output.Contains("UNMERGED");
+
+                    _logger.LogDebug("[DoltCli.IsMergeInProgressAsync] Status-based merge detection: {IsMerging}", isMerging);
+                    return isMerging;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[DoltCli.IsMergeInProgressAsync] Error checking merge state");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// PP13-73-C2: Abort an in-progress merge, reverting all changes and clearing conflict state.
+        /// Use this when conflict resolution fails and the merge cannot be completed.
+        /// </summary>
+        /// <returns>Command result indicating success/failure of the abort operation</returns>
+        public async Task<DoltCommandResult> MergeAbortAsync()
+        {
+            _logger.LogInformation("[DoltCli.MergeAbortAsync] Aborting merge in progress");
+            var result = await ExecuteDoltCommandAsync("merge", "--abort");
+
+            if (result.Success)
+            {
+                _logger.LogInformation("[DoltCli.MergeAbortAsync] Merge aborted successfully");
+            }
+            else
+            {
+                _logger.LogWarning("[DoltCli.MergeAbortAsync] Failed to abort merge: {Error}", result.Error);
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Implementation Note: This is a simplified implementation that returns placeholder data.
         /// Full implementation would require parsing Dolt's conflict output format,
         /// which varies by table structure and conflict type.
@@ -677,6 +1016,162 @@ namespace DMMS.Services
         {
             var strategy = resolution == ConflictResolution.Ours ? "--ours" : "--theirs";
             return await ExecuteDoltCommandAsync("conflicts", "resolve", strategy, tableName);
+        }
+
+        /// <summary>
+        /// Resolves a conflict for a specific document within a table.
+        /// This allows individual document resolution without affecting other conflicts in the same table.
+        /// For keep_ours: Deletes the conflict row, keeping the document as-is in the working set.
+        /// For keep_theirs: Updates the document with "their" values from the conflict table, then deletes the conflict row.
+        /// PP13-73: Added collectionName parameter to support composite PK (doc_id, collection_name) and fixed column names.
+        /// </summary>
+        /// <param name="tableName">Name of the table containing the conflict (typically "documents")</param>
+        /// <param name="documentId">ID of the document to resolve</param>
+        /// <param name="collectionName">Name of the collection containing the document (required for composite PK)</param>
+        /// <param name="resolution">Resolution strategy (Ours or Theirs)</param>
+        /// <returns>Result indicating success or failure of the resolution</returns>
+        public async Task<DoltCommandResult> ResolveDocumentConflictAsync(
+            string tableName,
+            string documentId,
+            string collectionName,
+            ConflictResolution resolution)
+        {
+            try
+            {
+                // Escape values for SQL
+                var escapedDocId = documentId.Replace("'", "''");
+                var escapedCollectionName = collectionName.Replace("'", "''");
+                var conflictTableName = $"dolt_conflicts_{tableName}";
+
+                // Build WHERE clause with composite key for both documents table and conflict table
+                var docWhereClause = $"doc_id = '{escapedDocId}' AND collection_name = '{escapedCollectionName}'";
+                var conflictWhereClause = $"our_doc_id = '{escapedDocId}' AND our_collection_name = '{escapedCollectionName}'";
+
+                if (resolution == ConflictResolution.Ours)
+                {
+                    // For keep_ours: Simply delete the conflict row
+                    // The document in the main table will be kept as-is (our version)
+                    var deleteSql = $"DELETE FROM {conflictTableName} WHERE {conflictWhereClause}";
+                    _logger.LogDebug("[DoltCli.ResolveDocumentConflictAsync] Resolving with ours for {DocId} in collection {Collection}: {Sql}",
+                        documentId, collectionName, deleteSql);
+
+                    // PP13-73-C2: Use transaction wrapper to avoid autocommit blocking during merge
+                    var success = await ExecuteInTransactionAsync(deleteSql);
+                    if (!success)
+                    {
+                        var errorMessage = $"Failed to delete conflict row for document {documentId} in collection {collectionName}";
+                        _logger.LogWarning("[DoltCli.ResolveDocumentConflictAsync] {Error}", errorMessage);
+                        return new DoltCommandResult(false, "", errorMessage, -1);
+                    }
+
+                    return new DoltCommandResult(true, $"Resolved conflict for {documentId} in {collectionName} with 'ours' strategy", "", 0);
+                }
+                else // Theirs
+                {
+                    // For keep_theirs: Update the document with their values, then delete the conflict
+                    // PP13-73: Use proper column names and include collection_name in WHERE clauses
+
+                    // Update all relevant columns from conflict table to main table
+                    // The documents table columns are: content, content_hash, title, doc_type, metadata, updated_at
+                    // The conflict table has: their_content, their_content_hash, their_title, their_doc_type, their_metadata
+                    var updateDocSql = $@"
+                        UPDATE {tableName}
+                        SET content = (SELECT their_content FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            content_hash = (SELECT their_content_hash FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            title = (SELECT their_title FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            doc_type = (SELECT their_doc_type FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            metadata = (SELECT their_metadata FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE {docWhereClause}";
+
+                    // Delete the conflict row after updating the document
+                    var deleteSql = $"DELETE FROM {conflictTableName} WHERE {conflictWhereClause}";
+
+                    _logger.LogDebug("[DoltCli.ResolveDocumentConflictAsync] Updating document {DocId} in collection {Collection} with theirs and deleting conflict: UPDATE: {UpdateSql}, DELETE: {DeleteSql}",
+                        documentId, collectionName, updateDocSql, deleteSql);
+
+                    // PP13-73-C2: Execute both UPDATE and DELETE within a single transaction
+                    // This avoids the autocommit blocking issue during active merge state
+                    var success = await ExecuteInTransactionAsync(updateDocSql, deleteSql);
+                    if (!success)
+                    {
+                        var errorMessage = $"Failed to update document and delete conflict for {documentId} in collection {collectionName}";
+                        _logger.LogWarning("[DoltCli.ResolveDocumentConflictAsync] {Error}", errorMessage);
+                        return new DoltCommandResult(false, "", errorMessage, -1);
+                    }
+
+                    _logger.LogDebug("[DoltCli.ResolveDocumentConflictAsync] Successfully resolved conflict for {DocId} with 'theirs' strategy", documentId);
+                    return new DoltCommandResult(true, $"Resolved conflict for {documentId} in {collectionName} with 'theirs' strategy", "", 0);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to resolve document conflict for {DocId} in {Table} (collection: {Collection})",
+                    documentId, tableName, collectionName);
+                return new DoltCommandResult(false, "", ex.Message, -1);
+            }
+        }
+
+        /// <summary>
+        /// PP13-73-C3: Generates SQL statements for resolving a document conflict without executing them.
+        /// This allows batch resolution to collect all SQL and execute in a single transaction.
+        /// </summary>
+        /// <param name="tableName">Name of the table containing the conflict (typically "documents")</param>
+        /// <param name="documentId">ID of the document to resolve</param>
+        /// <param name="collectionName">Name of the collection containing the document</param>
+        /// <param name="resolution">Resolution strategy (Ours or Theirs)</param>
+        /// <returns>Array of SQL statements for the resolution (empty array if error)</returns>
+        public string[] GenerateConflictResolutionSql(
+            string tableName,
+            string documentId,
+            string collectionName,
+            ConflictResolution resolution)
+        {
+            try
+            {
+                // Escape values for SQL
+                var escapedDocId = documentId.Replace("'", "''");
+                var escapedCollectionName = collectionName.Replace("'", "''");
+                var conflictTableName = $"dolt_conflicts_{tableName}";
+
+                // Build WHERE clauses with composite key
+                var docWhereClause = $"doc_id = '{escapedDocId}' AND collection_name = '{escapedCollectionName}'";
+                var conflictWhereClause = $"our_doc_id = '{escapedDocId}' AND our_collection_name = '{escapedCollectionName}'";
+
+                if (resolution == ConflictResolution.Ours)
+                {
+                    // For keep_ours: Simply delete the conflict row
+                    var deleteSql = $"DELETE FROM {conflictTableName} WHERE {conflictWhereClause}";
+                    _logger.LogDebug("[DoltCli.GenerateConflictResolutionSql] Generated keep_ours SQL for {DocId} in {Collection}: {Sql}",
+                        documentId, collectionName, deleteSql);
+                    return new[] { deleteSql };
+                }
+                else // Theirs
+                {
+                    // For keep_theirs: Update the document with their values, then delete the conflict
+                    var updateDocSql = $@"
+                        UPDATE {tableName}
+                        SET content = (SELECT their_content FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            content_hash = (SELECT their_content_hash FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            title = (SELECT their_title FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            doc_type = (SELECT their_doc_type FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            metadata = (SELECT their_metadata FROM {conflictTableName} WHERE {conflictWhereClause}),
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE {docWhereClause}";
+
+                    var deleteSql = $"DELETE FROM {conflictTableName} WHERE {conflictWhereClause}";
+
+                    _logger.LogDebug("[DoltCli.GenerateConflictResolutionSql] Generated keep_theirs SQL for {DocId} in {Collection}: UPDATE + DELETE",
+                        documentId, collectionName);
+                    return new[] { updateDocSql, deleteSql };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[DoltCli.GenerateConflictResolutionSql] Error generating SQL for {DocId} in {Collection}",
+                    documentId, collectionName);
+                return Array.Empty<string>();
+            }
         }
 
         // ==================== Diff Operations ====================
@@ -951,14 +1446,111 @@ namespace DMMS.Services
         }
 
         /// <summary>
+        /// PP13-73-C2: Executes multiple SQL statements within a transaction.
+        /// Required for conflict resolution during merge operations, as Dolt rejects
+        /// modifications to dolt_conflicts_* tables when autocommit is enabled.
+        ///
+        /// PP13-73-C3: Added skipCommit parameter. When resolving merge conflicts,
+        /// COMMIT should be skipped because Dolt blocks COMMIT until ALL conflicts
+        /// are resolved. The actual commit happens via 'dolt commit' after all
+        /// conflicts are resolved.
+        ///
+        /// Wraps statements with: SET @@autocommit = 0; [statements] [COMMIT if not skipped]; SET @@autocommit = 1;
+        ///
+        /// RECOMMENDED FOR:
+        /// - Merge conflict resolution (DELETE/UPDATE on dolt_conflicts_* tables)
+        /// - Multi-statement operations that must succeed or fail together
+        /// - Operations during active merge state
+        /// </summary>
+        /// <param name="sqlStatements">SQL statements to execute within the transaction</param>
+        /// <returns>True if all statements succeeded, false otherwise</returns>
+        public async Task<bool> ExecuteInTransactionAsync(params string[] sqlStatements)
+        {
+            return await ExecuteInTransactionAsync(skipCommit: false, sqlStatements);
+        }
+
+        /// <summary>
+        /// PP13-73-C3: Overload with skipCommit parameter for merge conflict resolution.
+        /// When resolving merge conflicts, COMMIT should be skipped because Dolt blocks
+        /// COMMIT until ALL conflicts are resolved. The actual commit happens via 'dolt commit'.
+        /// </summary>
+        public async Task<bool> ExecuteInTransactionAsync(bool skipCommit, params string[] sqlStatements)
+        {
+            if (sqlStatements == null || sqlStatements.Length == 0)
+            {
+                _logger.LogWarning("[DoltCli.ExecuteInTransactionAsync] No SQL statements provided");
+                return false;
+            }
+
+            // Build transaction-wrapped SQL
+            // Note: Dolt requires autocommit=0 for conflict table modifications during merge
+            var transactionSql = new StringBuilder();
+            transactionSql.AppendLine("SET @@autocommit = 0;");
+
+            foreach (var statement in sqlStatements)
+            {
+                var trimmedStatement = statement.Trim();
+                if (!string.IsNullOrEmpty(trimmedStatement))
+                {
+                    // Ensure statement ends with semicolon
+                    if (!trimmedStatement.EndsWith(";"))
+                    {
+                        trimmedStatement += ";";
+                    }
+                    transactionSql.AppendLine(trimmedStatement);
+                }
+            }
+
+            // PP13-73-C3: Handle COMMIT based on skipCommit flag
+            // When skipCommit=false (normal use), we commit and re-enable autocommit
+            // When skipCommit=true (merge conflict resolution), we enable dolt_allow_commit_conflicts
+            // to allow committing the conflict resolution changes, then commit
+            if (!skipCommit)
+            {
+                transactionSql.AppendLine("COMMIT;");
+                transactionSql.AppendLine("SET @@autocommit = 1;");
+            }
+            else
+            {
+                // PP13-73-C3: For merge conflict resolution, enable dolt_allow_commit_conflicts
+                // This allows us to commit even while other conflicts may exist
+                transactionSql.AppendLine("SET @@dolt_allow_commit_conflicts = 1;");
+                transactionSql.AppendLine("COMMIT;");
+                transactionSql.AppendLine("SET @@dolt_allow_commit_conflicts = 0;");
+                transactionSql.AppendLine("SET @@autocommit = 1;");
+            }
+
+            var fullSql = transactionSql.ToString();
+            _logger.LogDebug("[DoltCli.ExecuteInTransactionAsync] Executing transaction SQL (skipCommit={SkipCommit}):\n{Sql}", skipCommit, fullSql);
+
+            try
+            {
+                var result = await ExecuteDoltCommandAsync("sql", "-q", fullSql);
+                if (!result.Success)
+                {
+                    _logger.LogError("[DoltCli.ExecuteInTransactionAsync] Transaction failed: {Error}", result.Error);
+                    return false;
+                }
+
+                _logger.LogDebug("[DoltCli.ExecuteInTransactionAsync] Transaction completed successfully");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[DoltCli.ExecuteInTransactionAsync] Exception during transaction execution");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Executes a SQL query that returns a single scalar value.
-        /// 
+        ///
         /// RECOMMENDED FOR:
         /// - Aggregate functions: COUNT(*), MAX(id), MIN(date), SUM(amount), AVG(score)
         /// - Single-value queries: SELECT active_branch(), SELECT DOLT_HASHOF('HEAD')
         /// - Existence checks: SELECT COUNT(*) FROM table WHERE condition
         /// - Queries with LIMIT 1 that return a single value
-        /// 
+        ///
         /// For queries returning multiple rows, use QueryAsync&lt;T&gt;() instead.
         /// For DDL/DML statements, use ExecuteAsync() instead.
         /// </summary>
@@ -1112,16 +1704,198 @@ namespace DMMS.Services
             // Remove ANSI color codes (pattern: \[\d+(;\d+)*m)
             var ansiPattern = @"\x1b\[\d+(;\d+)*m";
             var withoutAnsi = System.Text.RegularExpressions.Regex.Replace(input, ansiPattern, string.Empty);
-            
+
             // Also handle the bracket-only format [0m[33m etc
             var bracketPattern = @"\[\d+(;\d+)*m";
             withoutAnsi = System.Text.RegularExpressions.Regex.Replace(withoutAnsi, bracketPattern, string.Empty);
-            
+
             // Remove git branch information in parentheses like "(HEAD -> main)"
             var branchPattern = @"\([^)]*\)\s*";
             withoutAnsi = System.Text.RegularExpressions.Regex.Replace(withoutAnsi, branchPattern, string.Empty);
-            
+
             return withoutAnsi.Trim();
+        }
+
+        /// <summary>
+        /// Get a document's content at a specific commit using Dolt's AS OF clause
+        /// Used for three-way merge conflict analysis
+        /// </summary>
+        /// <param name="tableName">Name of the table containing the document</param>
+        /// <param name="documentId">ID of the document to retrieve</param>
+        /// <param name="commitHash">Commit hash to retrieve the document at</param>
+        /// <returns>Document content if found, null otherwise</returns>
+        public async Task<DocumentContent?> GetDocumentAtCommitAsync(string tableName, string documentId, string commitHash)
+        {
+            try
+            {
+                // Escape the document ID for SQL
+                var escapedDocId = documentId.Replace("'", "''");
+
+                // Query using Dolt's AS OF clause to get historical document state
+                var sql = $"SELECT * FROM `{tableName}` AS OF '{commitHash}' WHERE doc_id = '{escapedDocId}'";
+                var json = await QueryJsonAsync(sql);
+
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return null;
+                }
+
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("rows", out var rows))
+                {
+                    var rowArray = rows.EnumerateArray().ToList();
+                    if (rowArray.Any())
+                    {
+                        var row = rowArray.First();
+                        var content = new DocumentContent
+                        {
+                            Exists = true,
+                            CommitHash = commitHash
+                        };
+
+                        // Extract content from possible field names
+                        if (row.TryGetProperty("content", out var contentProp))
+                        {
+                            content.Content = contentProp.GetString();
+                        }
+                        else if (row.TryGetProperty("document_text", out contentProp))
+                        {
+                            content.Content = contentProp.GetString();
+                        }
+                        else if (row.TryGetProperty("document_content", out contentProp))
+                        {
+                            content.Content = contentProp.GetString();
+                        }
+
+                        // Extract metadata from other fields
+                        foreach (var prop in row.EnumerateObject())
+                        {
+                            if (prop.Name != "content" && prop.Name != "document_text" &&
+                                prop.Name != "document_content" && prop.Name != "doc_id")
+                            {
+                                object? value = prop.Value.ValueKind switch
+                                {
+                                    JsonValueKind.String => prop.Value.GetString(),
+                                    JsonValueKind.Number => prop.Value.GetDecimal(),
+                                    JsonValueKind.True => true,
+                                    JsonValueKind.False => false,
+                                    JsonValueKind.Null => null,
+                                    _ => prop.Value.GetRawText()
+                                };
+                                if (value != null)
+                                {
+                                    content.Metadata[prop.Name] = value;
+                                }
+                            }
+                        }
+
+                        return content;
+                    }
+                }
+
+                // Document doesn't exist at this commit
+                return new DocumentContent { Exists = false, CommitHash = commitHash };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("Could not get document {DocId} from {Table} at {Commit}: {Error}",
+                    documentId, tableName, commitHash, ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Get the merge base commit between two branches
+        /// </summary>
+        /// <param name="branch1">First branch name</param>
+        /// <param name="branch2">Second branch name</param>
+        /// <returns>Commit hash of the merge base</returns>
+        public async Task<string?> GetMergeBaseAsync(string branch1, string branch2)
+        {
+            try
+            {
+                var result = await ExecuteDoltCommandAsync("merge-base", branch1, branch2);
+                if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
+                {
+                    return result.Output.Trim();
+                }
+
+                _logger.LogWarning("Could not determine merge base between {Branch1} and {Branch2}: {Error}",
+                    branch1, branch2, result.Error);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get merge base between {Branch1} and {Branch2}", branch1, branch2);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Get document changes between two commits for a specific table
+        /// Uses Dolt's DOLT_DIFF function to identify added, modified, and deleted documents
+        /// </summary>
+        /// <param name="fromCommit">Starting commit hash</param>
+        /// <param name="toCommit">Ending commit hash</param>
+        /// <param name="tableName">Table to analyze changes for</param>
+        /// <returns>Dictionary of document IDs to their change type (added/modified/deleted)</returns>
+        public async Task<Dictionary<string, string>> GetDocumentChangesBetweenCommitsAsync(
+            string fromCommit,
+            string toCommit,
+            string tableName)
+        {
+            var changes = new Dictionary<string, string>();
+
+            try
+            {
+                // Query the DOLT_DIFF function to get all changes between commits
+                var sql = $"SELECT diff_type, from_doc_id, to_doc_id FROM DOLT_DIFF('{fromCommit}', '{toCommit}', '{tableName}')";
+                var json = await QueryJsonAsync(sql);
+
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return changes;
+                }
+
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("rows", out var rows))
+                {
+                    foreach (var row in rows.EnumerateArray())
+                    {
+                        var diffType = row.TryGetProperty("diff_type", out var dt) ? dt.GetString() : null;
+                        var fromDocId = row.TryGetProperty("from_doc_id", out var fromId) ? fromId.GetString() : null;
+                        var toDocId = row.TryGetProperty("to_doc_id", out var toId) ? toId.GetString() : null;
+
+                        // Determine the document ID and change type
+                        var docId = toDocId ?? fromDocId;
+                        if (string.IsNullOrEmpty(docId) || string.IsNullOrEmpty(diffType))
+                        {
+                            continue;
+                        }
+
+                        // Normalize diff type names
+                        var normalizedType = diffType.ToLowerInvariant() switch
+                        {
+                            "added" or "insert" => "added",
+                            "modified" or "update" => "modified",
+                            "deleted" or "delete" or "removed" => "deleted",
+                            _ => diffType.ToLowerInvariant()
+                        };
+
+                        changes[docId] = normalizedType;
+                    }
+                }
+
+                _logger.LogDebug("Found {Count} document changes in {Table} between {From} and {To}",
+                    changes.Count, tableName, fromCommit, toCommit);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not get document changes for {Table} between {From} and {To}",
+                    tableName, fromCommit, toCommit);
+            }
+
+            return changes;
         }
     }
 }

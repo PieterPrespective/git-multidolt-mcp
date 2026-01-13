@@ -16,6 +16,118 @@ namespace DMMS.Services
         private readonly ILogger<ConflictAnalyzer> _logger;
 
         /// <summary>
+        /// Set of internal/system tables that should be excluded from conflict analysis
+        /// and change counts to avoid reporting infrastructure tables as user data changes
+        /// </summary>
+        private static readonly HashSet<string> InternalTables = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "chroma_sync_state",
+            "document_sync_log",
+            "sync_operations",
+            "local_changes",
+            "collections",
+            "dolt_docs",
+            "dolt_ignore",
+            "dolt_procedures",
+            "dolt_schemas",
+            "dolt_query_catalog"
+        };
+
+        /// <summary>
+        /// Checks if a table name is an internal/system table that should be excluded from user-facing metrics
+        /// </summary>
+        /// <param name="tableName">Name of the table to check</param>
+        /// <returns>True if the table is internal and should be filtered out</returns>
+        private static bool IsInternalTable(string tableName)
+        {
+            if (string.IsNullOrWhiteSpace(tableName))
+                return true;
+
+            // Filter out internal tables and Dolt system tables
+            return InternalTables.Contains(tableName) ||
+                   tableName.StartsWith("dolt_", StringComparison.OrdinalIgnoreCase) ||
+                   tableName.StartsWith("__", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Checks if the conflict JSON from Dolt is a table-level summary rather than document-level conflicts.
+        /// Table-level summaries have 'num_data_conflicts' and 'table' fields but NOT 'document_id' or 'collection'.
+        /// These summaries don't provide document-level granularity needed for proper conflict detection.
+        /// PP13-72-C2: Also returns true for empty results ({"rows": []}) to ensure fallback is triggered.
+        /// </summary>
+        /// <param name="conflictJson">The JSON returned from Dolt's preview merge conflicts</param>
+        /// <returns>True if the JSON is a table-level summary or empty, requiring fallback to three-way diff</returns>
+        private bool IsDoltTableLevelSummary(string conflictJson)
+        {
+            if (string.IsNullOrWhiteSpace(conflictJson))
+            {
+                _logger.LogDebug("PP13-72-C2 DIAG: IsDoltTableLevelSummary returning false for null/empty input");
+                return false;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(conflictJson);
+                var root = doc.RootElement;
+
+                // PP13-72-C2: If root is an array (document-level conflicts), it's NOT a table-level summary
+                if (root.ValueKind == JsonValueKind.Array)
+                {
+                    _logger.LogDebug("PP13-72-C2 DIAG: Root element is array - not a table-level summary");
+                    return false;
+                }
+
+                // Check for the {"rows": [...]} structure from DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY
+                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("rows", out var rows) && rows.ValueKind == JsonValueKind.Array)
+                {
+                    var rowCount = rows.GetArrayLength();
+                    _logger.LogDebug("PP13-72-C2 DIAG: IsDoltTableLevelSummary found rows array with {Count} elements", rowCount);
+
+                    // PP13-72-C2 FIX: Empty rows array means no document-level data from Dolt
+                    // This should trigger the three-way diff fallback to properly detect document conflicts
+                    if (rowCount == 0)
+                    {
+                        _logger.LogDebug("PP13-72-C2 DIAG: Empty rows array detected - returning true to trigger fallback");
+                        return true;
+                    }
+
+                    foreach (var row in rows.EnumerateArray())
+                    {
+                        // Table-level summaries have "num_data_conflicts" and "table"
+                        // but NOT "document_id" or "collection"
+                        bool hasNumDataConflicts = row.TryGetProperty("num_data_conflicts", out _);
+                        bool hasTableName = row.TryGetProperty("table", out _);
+                        bool hasDocumentId = row.TryGetProperty("document_id", out _) ||
+                                             row.TryGetProperty("doc_id", out _);
+                        bool hasCollection = row.TryGetProperty("collection", out _) ||
+                                             row.TryGetProperty("collection_name", out _);
+
+                        _logger.LogDebug("PP13-72-C2 DIAG: Row analysis - hasNumDataConflicts={Num}, hasTableName={Table}, hasDocumentId={DocId}, hasCollection={Coll}",
+                            hasNumDataConflicts, hasTableName, hasDocumentId, hasCollection);
+
+                        // If we have table-level fields but no document-level fields, this is a table summary
+                        if (hasNumDataConflicts && hasTableName && !hasDocumentId && !hasCollection)
+                        {
+                            _logger.LogDebug("Detected table-level summary format from Dolt - will use three-way diff fallback");
+                            return true;
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("PP13-72-C2 DIAG: No 'rows' array found in JSON, checking root element kind: {Kind}", root.ValueKind);
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogDebug("Could not parse conflict JSON to detect format: {Error}", ex.Message);
+            }
+
+            _logger.LogDebug("PP13-72-C2 DIAG: IsDoltTableLevelSummary returning false - no triggers matched");
+            return false;
+        }
+
+        /// <summary>
         /// Initializes a new instance of the ConflictAnalyzer class
         /// </summary>
         /// <param name="doltCli">Dolt CLI service for executing Dolt operations</param>
@@ -51,13 +163,39 @@ namespace DMMS.Services
                 try
                 {
                     conflictSummaryJson = await _doltCli.PreviewMergeConflictsAsync(sourceBranch, targetBranch);
+                    _logger.LogDebug("PP13-72-C2 DIAG: PreviewMergeConflictsAsync returned: '{Result}' (length={Length})",
+                        conflictSummaryJson?.Substring(0, Math.Min(200, conflictSummaryJson?.Length ?? 0)) ?? "null",
+                        conflictSummaryJson?.Length ?? 0);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning("Dolt merge preview not available, falling back to manual analysis: {Error}", ex.Message);
                     conflictSummaryJson = await FallbackConflictAnalysis(sourceBranch, targetBranch);
                 }
-                
+
+                // PP13-71-C1: Trigger fallback if empty, null, or if Dolt returned a table-level summary
+                // Table-level summaries don't provide document-level granularity needed for proper conflict detection
+                var isNullOrEmpty = string.IsNullOrWhiteSpace(conflictSummaryJson);
+                var isEmptyArray = conflictSummaryJson == "[]";
+                var isTableLevelSummary = IsDoltTableLevelSummary(conflictSummaryJson);
+
+                _logger.LogDebug("PP13-72-C2 DIAG: Fallback trigger check - isNullOrEmpty={IsNull}, isEmptyArray={IsEmpty}, isTableLevelSummary={IsTable}",
+                    isNullOrEmpty, isEmptyArray, isTableLevelSummary);
+
+                if (isNullOrEmpty || isEmptyArray || isTableLevelSummary)
+                {
+                    _logger.LogInformation("Using three-way diff for document-level conflict detection (trigger: null={Null}, empty={Empty}, tableSummary={Table})",
+                        isNullOrEmpty, isEmptyArray, isTableLevelSummary);
+                    conflictSummaryJson = await FallbackConflictAnalysis(sourceBranch, targetBranch);
+                    _logger.LogDebug("PP13-72-C2 DIAG: FallbackConflictAnalysis returned: '{Result}' (length={Length})",
+                        conflictSummaryJson?.Substring(0, Math.Min(500, conflictSummaryJson?.Length ?? 0)) ?? "null",
+                        conflictSummaryJson?.Length ?? 0);
+                }
+                else
+                {
+                    _logger.LogDebug("PP13-72-C2 DIAG: NOT triggering fallback - using Dolt's response directly");
+                }
+
                 // Parse conflict data
                 var allConflicts = await ParseConflictSummary(conflictSummaryJson);
                 
@@ -454,55 +592,119 @@ namespace DMMS.Services
         }
 
         /// <summary>
-        /// Determine if a specific conflict can be automatically resolved
+        /// Determine if a specific conflict can be automatically resolved.
+        ///
+        /// Auto-resolvable scenarios:
+        /// - Only one branch modified the document (fast-forward)
+        /// - Both branches made identical changes
+        /// - Non-overlapping field modifications
+        ///
+        /// NOT auto-resolvable:
+        /// - Both branches modified the same document content differently
+        /// - Delete-modify conflicts
         /// </summary>
         public async Task<bool> CanAutoResolveConflictAsync(DetailedConflictInfo conflict)
         {
             try
             {
-                // Auto-resolvable scenarios:
-                // 1. Different fields were modified (no overlap)
-                // 2. Metadata-only conflicts with clear precedence
-                // 3. Add-add conflicts with identical content
-                
+                // Check using the new content fields first (more reliable)
+                if (conflict.OursContent != null || conflict.TheirsContent != null || conflict.BaseContent != null)
+                {
+                    // If both branches modified content differently from base = NOT auto-resolvable
+                    var oursChangedFromBase = conflict.OursContent != conflict.BaseContent;
+                    var theirsChangedFromBase = conflict.TheirsContent != conflict.BaseContent;
+                    var bothChanged = oursChangedFromBase && theirsChangedFromBase;
+                    var contentDiffers = conflict.OursContent != conflict.TheirsContent;
+
+                    if (bothChanged && contentDiffers)
+                    {
+                        _logger.LogDebug("Conflict {ConflictId}: Both branches modified content differently - NOT auto-resolvable",
+                            conflict.ConflictId);
+                        return false;
+                    }
+
+                    // If content is identical in both branches = auto-resolvable
+                    if (!contentDiffers)
+                    {
+                        _logger.LogDebug("Conflict {ConflictId}: Both branches have identical content - auto-resolvable",
+                            conflict.ConflictId);
+                        return true;
+                    }
+
+                    // If only one branch changed = auto-resolvable (use changed version)
+                    if (oursChangedFromBase != theirsChangedFromBase)
+                    {
+                        _logger.LogDebug("Conflict {ConflictId}: Only one branch changed content - auto-resolvable",
+                            conflict.ConflictId);
+                        return true;
+                    }
+                }
+
+                // Fallback to field-level analysis if content fields aren't populated
                 if (conflict.Type == ConflictType.ContentModification)
                 {
                     // Check if different fields were modified
                     var baseToOurs = GetModifiedFields(conflict.BaseValues, conflict.OurValues);
                     var baseToTheirs = GetModifiedFields(conflict.BaseValues, conflict.TheirValues);
-                    
-                    // No overlap = auto-resolvable
+
+                    // Check specifically for 'content' field overlap
+                    var contentModifiedByOurs = baseToOurs.Contains("content");
+                    var contentModifiedByTheirs = baseToTheirs.Contains("content");
+
+                    if (contentModifiedByOurs && contentModifiedByTheirs)
+                    {
+                        // Both modified content - check if values are different
+                        var ourContent = conflict.OurValues.GetValueOrDefault("content")?.ToString();
+                        var theirContent = conflict.TheirValues.GetValueOrDefault("content")?.ToString();
+
+                        if (ourContent != theirContent)
+                        {
+                            _logger.LogDebug("Conflict {ConflictId}: Both branches modified 'content' field differently - NOT auto-resolvable",
+                                conflict.ConflictId);
+                            return false;
+                        }
+                    }
+
+                    // No overlap in modified fields = auto-resolvable
                     var hasOverlap = baseToOurs.Intersect(baseToTheirs).Any();
-                    _logger.LogDebug("Conflict {ConflictId}: Modified fields overlap = {HasOverlap}", 
+                    _logger.LogDebug("Conflict {ConflictId}: Modified fields overlap = {HasOverlap}",
                         conflict.ConflictId, hasOverlap);
-                    
+
                     return !hasOverlap;
                 }
-                
+
                 if (conflict.Type == ConflictType.AddAdd)
                 {
                     // Check if content is identical
-                    var ourContent = conflict.OurValues.GetValueOrDefault("content")?.ToString();
-                    var theirContent = conflict.TheirValues.GetValueOrDefault("content")?.ToString();
+                    var ourContent = conflict.OursContent ?? conflict.OurValues.GetValueOrDefault("content")?.ToString();
+                    var theirContent = conflict.TheirsContent ?? conflict.TheirValues.GetValueOrDefault("content")?.ToString();
                     var isIdentical = string.Equals(ourContent, theirContent, StringComparison.Ordinal);
-                    
-                    _logger.LogDebug("AddAdd conflict {ConflictId}: Content identical = {IsIdentical}", 
+
+                    _logger.LogDebug("AddAdd conflict {ConflictId}: Content identical = {IsIdentical}",
                         conflict.ConflictId, isIdentical);
-                    
+
                     return isIdentical;
                 }
-                
-                // Metadata conflicts can often be auto-resolved by preferring newer timestamps
+
+                // Delete-modify conflicts are NOT auto-resolvable
+                if (conflict.Type == ConflictType.DeleteModify)
+                {
+                    _logger.LogDebug("Conflict {ConflictId}: Delete-modify conflict - NOT auto-resolvable",
+                        conflict.ConflictId);
+                    return false;
+                }
+
+                // Metadata-only conflicts can often be auto-resolved by preferring newer timestamps
                 if (conflict.Type == ConflictType.MetadataConflict)
                 {
-                    return true; // Most metadata conflicts can be auto-resolved
+                    return true;
                 }
-                
+
                 return false;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error analyzing auto-resolve potential for conflict {ConflictId}", 
+                _logger.LogWarning(ex, "Error analyzing auto-resolve potential for conflict {ConflictId}",
                     conflict.ConflictId);
                 return false;
             }
@@ -511,14 +713,315 @@ namespace DMMS.Services
         #region Private Helper Methods
 
         /// <summary>
-        /// Fallback conflict analysis when Dolt's native preview is not available
+        /// Fallback conflict analysis when Dolt's native preview is not available.
+        /// Implements a proper three-way merge analysis by:
+        /// 1. Finding the merge base commit
+        /// 2. Comparing base → source changes
+        /// 3. Comparing base → target changes
+        /// 4. Identifying overlapping document modifications
         /// </summary>
         private async Task<string> FallbackConflictAnalysis(string sourceBranch, string targetBranch)
         {
-            // Simple fallback - return empty JSON array indicating no conflicts detected
-            // In a real implementation, this could perform basic diff analysis
-            _logger.LogDebug("Using fallback conflict analysis");
-            return "[]";
+            _logger.LogInformation("PP13-72-C2 DIAG: Entering FallbackConflictAnalysis for {Source} -> {Target}",
+                sourceBranch, targetBranch);
+
+            var conflicts = new List<DetailedConflictInfo>();
+
+            try
+            {
+                // Step 1: Get the merge base commit
+                _logger.LogDebug("PP13-72-C2 DIAG: Step 1 - Getting merge base");
+                var mergeBase = await _doltCli.GetMergeBaseAsync(sourceBranch, targetBranch);
+                if (string.IsNullOrEmpty(mergeBase))
+                {
+                    _logger.LogWarning("PP13-72-C2 DIAG: Could not determine merge base - returning empty conflict list");
+                    return "[]";
+                }
+
+                _logger.LogDebug("PP13-72-C2 DIAG: Merge base commit: {MergeBase}", mergeBase);
+
+                // Step 2: Get the HEAD commits for both branches WITHOUT checkouts (PP13-72-C4)
+                // Using GetBranchCommitHashAsync eliminates side effects from branch checkouts
+                _logger.LogDebug("PP13-72-C4 DIAG: Step 2 - Getting HEAD commits for both branches without checkouts");
+
+                // PP13-72-C4: Get commit hashes without checking out branches
+                var sourceCommit = await _doltCli.GetBranchCommitHashAsync(sourceBranch);
+                if (string.IsNullOrEmpty(sourceCommit))
+                {
+                    _logger.LogWarning("PP13-72-C4: Could not get commit hash for source branch '{Branch}'", sourceBranch);
+                    return "[]";
+                }
+                _logger.LogDebug("PP13-72-C4 DIAG: Source branch HEAD commit: {Commit}", sourceCommit);
+
+                var targetCommit = await _doltCli.GetBranchCommitHashAsync(targetBranch);
+                if (string.IsNullOrEmpty(targetCommit))
+                {
+                    _logger.LogWarning("PP13-72-C4: Could not get commit hash for target branch '{Branch}'", targetBranch);
+                    return "[]";
+                }
+                _logger.LogDebug("PP13-72-C4 DIAG: Target branch HEAD commit: {Commit}", targetCommit);
+
+                _logger.LogDebug("PP13-72-C4 DIAG: Commits - Source={Source}, Target={Target}, MergeBase={Base}",
+                    sourceCommit, targetCommit, mergeBase);
+
+                // Step 3: Get list of user document tables (filter out internal tables)
+                _logger.LogDebug("PP13-72-C2 DIAG: Step 3 - Getting affected tables");
+                var affectedTables = await GetUserAffectedTables(mergeBase, sourceCommit, targetCommit);
+                _logger.LogDebug("PP13-72-C2 DIAG: User tables affected ({Count}): {Tables}",
+                    affectedTables.Count, string.Join(", ", affectedTables));
+
+                // Step 4: For each table, detect document-level conflicts
+                _logger.LogDebug("PP13-72-C2 DIAG: Step 4 - Detecting document conflicts for {Count} tables", affectedTables.Count);
+                foreach (var tableName in affectedTables)
+                {
+                    _logger.LogDebug("PP13-72-C2 DIAG: Analyzing table: {Table}", tableName);
+                    var tableConflicts = await DetectDocumentConflictsForTable(
+                        tableName, mergeBase, sourceCommit, targetCommit, sourceBranch, targetBranch);
+                    _logger.LogDebug("PP13-72-C2 DIAG: Table {Table} produced {Count} conflicts", tableName, tableConflicts.Count);
+                    conflicts.AddRange(tableConflicts);
+                }
+
+                _logger.LogInformation("PP13-72-C2 DIAG: Three-way diff analysis found {Count} document-level conflicts", conflicts.Count);
+
+                // Convert to JSON for parsing by standard flow
+                var conflictData = conflicts.Select(c => new
+                {
+                    collection = c.Collection,
+                    document_id = c.DocumentId,
+                    conflict_type = c.Type.ToString().ToLowerInvariant(),
+                    base_content = c.BaseContent,
+                    our_content = c.OursContent,
+                    their_content = c.TheirsContent,
+                    base_content_hash = c.BaseContentHash,
+                    our_content_hash = c.OursContentHash,
+                    their_content_hash = c.TheirsContentHash
+                }).ToList();
+
+                return JsonSerializer.Serialize(conflictData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Three-way diff analysis failed");
+                return "[]";
+            }
+        }
+
+        /// <summary>
+        /// Gets list of user-facing tables that have changes, excluding internal/system tables
+        /// </summary>
+        private async Task<List<string>> GetUserAffectedTables(string mergeBase, string sourceCommit, string targetCommit)
+        {
+            var allTables = new HashSet<string>();
+
+            try
+            {
+                // Get tables changed between merge base and source
+                var sourceDiff = await ExecuteDoltCommandAsync("diff", "--name-only", mergeBase, sourceCommit);
+                if (sourceDiff.Success && !string.IsNullOrWhiteSpace(sourceDiff.Output))
+                {
+                    foreach (var table in sourceDiff.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var trimmed = table.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                        {
+                            allTables.Add(trimmed);
+                        }
+                    }
+                }
+
+                // Get tables changed between merge base and target
+                var targetDiff = await ExecuteDoltCommandAsync("diff", "--name-only", mergeBase, targetCommit);
+                if (targetDiff.Success && !string.IsNullOrWhiteSpace(targetDiff.Output))
+                {
+                    foreach (var table in targetDiff.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var trimmed = table.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                        {
+                            allTables.Add(trimmed);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error getting affected tables");
+            }
+
+            // Filter out internal tables and return only user tables
+            return allTables.Where(t => !IsInternalTable(t)).ToList();
+        }
+
+        /// <summary>
+        /// Detects document-level conflicts for a specific table by comparing changes
+        /// from both branches against the merge base
+        /// </summary>
+        private async Task<List<DetailedConflictInfo>> DetectDocumentConflictsForTable(
+            string tableName,
+            string mergeBase,
+            string sourceCommit,
+            string targetCommit,
+            string sourceBranch,
+            string targetBranch)
+        {
+            var conflicts = new List<DetailedConflictInfo>();
+
+            try
+            {
+                // Get document changes from base to source (theirs)
+                var sourceChanges = await _doltCli.GetDocumentChangesBetweenCommitsAsync(mergeBase, sourceCommit, tableName);
+
+                // Get document changes from base to target (ours)
+                var targetChanges = await _doltCli.GetDocumentChangesBetweenCommitsAsync(mergeBase, targetCommit, tableName);
+
+                // Find documents modified in both branches (potential conflicts)
+                var overlappingDocs = sourceChanges.Keys.Intersect(targetChanges.Keys).ToList();
+
+                _logger.LogDebug("Table {Table}: source changed {S}, target changed {T}, overlapping {O}",
+                    tableName, sourceChanges.Count, targetChanges.Count, overlappingDocs.Count);
+
+                foreach (var docId in overlappingDocs)
+                {
+                    var sourceChangeType = sourceChanges[docId];
+                    var targetChangeType = targetChanges[docId];
+
+                    // Get document content at each commit
+                    var baseDoc = await _doltCli.GetDocumentAtCommitAsync(tableName, docId, mergeBase);
+                    var sourceDoc = await _doltCli.GetDocumentAtCommitAsync(tableName, docId, sourceCommit);
+                    var targetDoc = await _doltCli.GetDocumentAtCommitAsync(tableName, docId, targetCommit);
+
+                    // Determine if this is a real conflict
+                    var isConflict = DetermineIfConflict(sourceChangeType, targetChangeType, baseDoc, sourceDoc, targetDoc);
+
+                    if (isConflict)
+                    {
+                        // Extract the actual collection name from the document metadata
+                        // The documents table stores collection_name as a column
+                        var collectionName = tableName; // Default to table name if not found
+                        var docWithCollection = targetDoc ?? sourceDoc ?? baseDoc;
+                        if (docWithCollection?.Metadata != null &&
+                            docWithCollection.Metadata.TryGetValue("collection_name", out var collNameObj))
+                        {
+                            collectionName = collNameObj?.ToString() ?? tableName;
+                        }
+
+                        var conflict = new DetailedConflictInfo
+                        {
+                            Collection = collectionName,
+                            DocumentId = docId,
+                            Type = DetermineConflictType(sourceChangeType, targetChangeType),
+                            BaseContent = baseDoc?.Content,
+                            OursContent = targetDoc?.Content,  // Target = ours (we're merging into target)
+                            TheirsContent = sourceDoc?.Content, // Source = theirs (merging from source)
+                            BaseContentHash = ComputeValueHash(baseDoc?.Content),
+                            OursContentHash = ComputeValueHash(targetDoc?.Content),
+                            TheirsContentHash = ComputeValueHash(sourceDoc?.Content)
+                        };
+
+                        // Populate value dictionaries for field-level analysis
+                        if (baseDoc != null)
+                        {
+                            conflict.BaseValues["content"] = baseDoc.Content ?? "";
+                            foreach (var kvp in baseDoc.Metadata)
+                            {
+                                conflict.BaseValues[kvp.Key] = kvp.Value;
+                            }
+                        }
+
+                        if (targetDoc != null)
+                        {
+                            conflict.OurValues["content"] = targetDoc.Content ?? "";
+                            foreach (var kvp in targetDoc.Metadata)
+                            {
+                                conflict.OurValues[kvp.Key] = kvp.Value;
+                            }
+                        }
+
+                        if (sourceDoc != null)
+                        {
+                            conflict.TheirValues["content"] = sourceDoc.Content ?? "";
+                            foreach (var kvp in sourceDoc.Metadata)
+                            {
+                                conflict.TheirValues[kvp.Key] = kvp.Value;
+                            }
+                        }
+
+                        conflicts.Add(conflict);
+                        _logger.LogDebug("Detected conflict for document {DocId} in {Table}: {Type}",
+                            docId, tableName, conflict.Type);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error detecting conflicts for table {Table}", tableName);
+            }
+
+            return conflicts;
+        }
+
+        /// <summary>
+        /// Determines if overlapping changes constitute a real conflict
+        /// </summary>
+        private bool DetermineIfConflict(
+            string sourceChangeType,
+            string targetChangeType,
+            DocumentContent? baseDoc,
+            DocumentContent? sourceDoc,
+            DocumentContent? targetDoc)
+        {
+            // If both made identical changes, it's not a conflict
+            if (sourceDoc?.Content == targetDoc?.Content)
+            {
+                _logger.LogDebug("No conflict - identical changes in both branches");
+                return false;
+            }
+
+            // If one side didn't actually change from base, it's not a conflict
+            if (sourceDoc?.Content == baseDoc?.Content)
+            {
+                _logger.LogDebug("No conflict - source didn't change from base");
+                return false;
+            }
+
+            if (targetDoc?.Content == baseDoc?.Content)
+            {
+                _logger.LogDebug("No conflict - target didn't change from base");
+                return false;
+            }
+
+            // Delete-modify or modify-delete scenarios are conflicts
+            if (sourceChangeType == "deleted" && targetChangeType == "modified")
+            {
+                return true;
+            }
+
+            if (sourceChangeType == "modified" && targetChangeType == "deleted")
+            {
+                return true;
+            }
+
+            // Both modified/added differently from base - this is a conflict
+            return true;
+        }
+
+        /// <summary>
+        /// Determines the conflict type based on the change types from both branches
+        /// </summary>
+        private ConflictType DetermineConflictType(string sourceChangeType, string targetChangeType)
+        {
+            if (sourceChangeType == "added" && targetChangeType == "added")
+            {
+                return ConflictType.AddAdd;
+            }
+
+            if ((sourceChangeType == "deleted" && targetChangeType == "modified") ||
+                (sourceChangeType == "modified" && targetChangeType == "deleted"))
+            {
+                return ConflictType.DeleteModify;
+            }
+
+            return ConflictType.ContentModification;
         }
 
         /// <summary>
@@ -668,7 +1171,35 @@ namespace DMMS.Services
                     var typeStr = typeProp.GetString();
                     conflict.Type = ParseConflictType(typeStr);
                 }
-                
+
+                // Extract content fields from three-way diff output
+                if (conflictElement.TryGetProperty("base_content", out var baseContentProp))
+                {
+                    conflict.BaseContent = baseContentProp.GetString();
+                }
+                if (conflictElement.TryGetProperty("our_content", out var ourContentProp))
+                {
+                    conflict.OursContent = ourContentProp.GetString();
+                }
+                if (conflictElement.TryGetProperty("their_content", out var theirContentProp))
+                {
+                    conflict.TheirsContent = theirContentProp.GetString();
+                }
+
+                // Extract content hashes
+                if (conflictElement.TryGetProperty("base_content_hash", out var baseHashProp))
+                {
+                    conflict.BaseContentHash = baseHashProp.GetString();
+                }
+                if (conflictElement.TryGetProperty("our_content_hash", out var ourHashProp))
+                {
+                    conflict.OursContentHash = ourHashProp.GetString();
+                }
+                if (conflictElement.TryGetProperty("their_content_hash", out var theirHashProp))
+                {
+                    conflict.TheirsContentHash = theirHashProp.GetString();
+                }
+
                 // Extract base, our, and their values if present
                 ExtractConflictValues(conflictElement, conflict);
                 
@@ -830,18 +1361,26 @@ namespace DMMS.Services
         }
 
         /// <summary>
-        /// Generate a stable conflict ID based on conflict characteristics
+        /// Generate a stable conflict ID based on conflict characteristics.
+        /// PP13-73-C1: The ID is deterministically generated from Collection, DocumentId, and Type
+        /// to ensure consistency between Preview and Execute operations.
         /// </summary>
         private string GenerateConflictId(DetailedConflictInfo conflict)
         {
             // Generate stable GUID based on conflict content
             var input = $"{conflict.Collection}_{conflict.DocumentId}_{conflict.Type}";
-            
+
             using var sha256 = SHA256.Create();
             var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(input));
             var hashString = BitConverter.ToString(hash).Replace("-", "").Substring(0, 12).ToLower();
-            
-            return $"conf_{hashString}";
+
+            var conflictId = $"conf_{hashString}";
+
+            // PP13-73-C1: Debug logging for conflict ID generation traceability
+            _logger.LogDebug("PP13-73-C1: GenerateConflictId input='{Input}' => '{ConflictId}'",
+                input, conflictId);
+
+            return conflictId;
         }
 
         /// <summary>
@@ -869,15 +1408,23 @@ namespace DMMS.Services
         /// Convert raw conflict data to DetailedConflictInfo object
         /// </summary>
         private DetailedConflictInfo ConvertToDetailedConflictInfo(
-            Dictionary<string, object> conflictRow, 
+            Dictionary<string, object> conflictRow,
             string tableName)
         {
+            // PP13-73-C1: Extract actual collection name from conflict row for consistent ID generation
+            // The conflict row should contain 'our_collection_name' field from dolt_conflicts_documents table
+            var collectionName = conflictRow.GetValueOrDefault("our_collection_name")?.ToString() ?? tableName;
+
             var conflict = new DetailedConflictInfo
             {
-                Collection = tableName,
+                Collection = collectionName,
                 DocumentId = conflictRow.GetValueOrDefault("our_doc_id")?.ToString() ?? "",
                 Type = ConflictType.ContentModification
             };
+
+            // PP13-73-C1: Debug logging to track collection value used in ID generation
+            _logger.LogDebug("PP13-73-C1: ConvertToDetailedConflictInfo using Collection='{Collection}' for doc '{DocId}' (tableName was '{TableName}')",
+                conflict.Collection, conflict.DocumentId, tableName);
 
             // Extract base, our, and their values from conflict row
             foreach (var kvp in conflictRow)
@@ -994,60 +1541,62 @@ namespace DMMS.Services
         }
 
         /// <summary>
-        /// Generate merge preview statistics
+        /// Generate merge preview statistics.
+        /// Filters out internal/system tables to report only user-facing data changes.
         /// </summary>
         private async Task<MergePreviewInfo> GenerateMergePreview(string sourceBranch, string targetBranch)
         {
             try
             {
                 _logger.LogDebug("Generating merge preview statistics for {Source} -> {Target}", sourceBranch, targetBranch);
-                
+
                 // Get the merge base commit
-                var mergeBaseResult = await ExecuteDoltCommandAsync("merge-base", sourceBranch, targetBranch);
-                var mergeBase = mergeBaseResult.Success ? mergeBaseResult.Output?.Trim() : null;
-                
+                var mergeBase = await _doltCli.GetMergeBaseAsync(sourceBranch, targetBranch);
+
                 if (string.IsNullOrEmpty(mergeBase))
                 {
                     _logger.LogWarning("Could not determine merge base, using target branch HEAD");
                     mergeBase = await _doltCli.GetHeadCommitHashAsync();
                 }
-                
-                // Get diff statistics between merge base and source branch
-                var diffResult = await ExecuteDoltCommandAsync("diff", "--stat", "--json", mergeBase, sourceBranch);
-                
-                if (!diffResult.Success || string.IsNullOrWhiteSpace(diffResult.Output))
+
+                var previewInfo = new MergePreviewInfo
                 {
-                    // Fallback to basic diff without JSON if not supported
-                    diffResult = await ExecuteDoltCommandAsync("diff", "--stat", mergeBase, sourceBranch);
-                }
-                
-                // Parse diff statistics
-                var previewInfo = ParseDiffStatistics(diffResult.Output ?? "");
-                
+                    DocumentsAdded = 0,
+                    DocumentsModified = 0,
+                    DocumentsDeleted = 0,
+                    CollectionsAffected = 0
+                };
+
                 // Get list of affected tables/collections
                 var tablesResult = await ExecuteDoltCommandAsync("diff", "--name-only", mergeBase, sourceBranch);
                 if (tablesResult.Success && !string.IsNullOrWhiteSpace(tablesResult.Output))
                 {
-                    var affectedTables = tablesResult.Output
+                    var allTables = tablesResult.Output
                         .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                         .Select(t => t.Trim())
                         .Where(t => !string.IsNullOrEmpty(t))
                         .Distinct()
                         .ToList();
-                    
-                    previewInfo.CollectionsAffected = affectedTables.Count;
-                    
-                    // Analyze each table for document changes
-                    foreach (var table in affectedTables)
+
+                    // Filter out internal tables for user-facing counts
+                    var userTables = allTables.Where(t => !IsInternalTable(t)).ToList();
+
+                    _logger.LogDebug("Found {Total} tables changed, {User} are user tables (filtered out {Internal} internal)",
+                        allTables.Count, userTables.Count, allTables.Count - userTables.Count);
+
+                    previewInfo.CollectionsAffected = userTables.Count;
+
+                    // Analyze only user tables for document changes
+                    foreach (var table in userTables)
                     {
                         await AnalyzeTableChanges(table, mergeBase, sourceBranch, previewInfo);
                     }
                 }
-                
+
                 _logger.LogDebug("Merge preview: +{Added} ~{Modified} -{Deleted} documents across {Collections} collections",
-                    previewInfo.DocumentsAdded, previewInfo.DocumentsModified, 
+                    previewInfo.DocumentsAdded, previewInfo.DocumentsModified,
                     previewInfo.DocumentsDeleted, previewInfo.CollectionsAffected);
-                
+
                 return previewInfo;
             }
             catch (Exception ex)
@@ -1058,7 +1607,7 @@ namespace DMMS.Services
                     DocumentsAdded = 0,
                     DocumentsModified = 0,
                     DocumentsDeleted = 0,
-                    CollectionsAffected = 1
+                    CollectionsAffected = 0
                 };
             }
         }

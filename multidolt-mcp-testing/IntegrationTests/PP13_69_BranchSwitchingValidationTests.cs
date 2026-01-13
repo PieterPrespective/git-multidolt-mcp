@@ -64,8 +64,27 @@ namespace DMMS.IntegrationTests
             );
             await _syncStateTracker.InitializeAsync(_testRepoPath);
 
-            // Mock ChromaDB service
-            _chromaService = Mock.Of<IChromaDbService>();
+            // Mock ChromaDB service with complete setup for SyncChromaToMatchBranch and FullSyncAsync
+            var chromaMock = new Mock<IChromaDbService>();
+            chromaMock.Setup(x => x.ListCollectionsAsync(It.IsAny<int?>(), It.IsAny<int?>()))
+                .ReturnsAsync(new List<string>());
+            chromaMock.Setup(x => x.GetDocumentsAsync(It.IsAny<string>(), It.IsAny<List<string>?>(), It.IsAny<Dictionary<string, object>?>(), It.IsAny<int?>(), It.IsAny<bool>()))
+                .ReturnsAsync(new Dictionary<string, object> { ["ids"] = new List<object>() });
+            chromaMock.Setup(x => x.DeleteCollectionAsync(It.IsAny<string>()))
+                .ReturnsAsync(true);
+            chromaMock.Setup(x => x.CreateCollectionAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>?>()))
+                .ReturnsAsync(true);
+            chromaMock.Setup(x => x.AddDocumentsAsync(
+                It.IsAny<string>(),
+                It.IsAny<List<string>>(),
+                It.IsAny<List<string>>(),
+                It.IsAny<List<Dictionary<string, object>>?>(),
+                It.IsAny<bool>(),
+                It.IsAny<bool>()))
+                .ReturnsAsync(true);
+            chromaMock.Setup(x => x.DeleteDocumentsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<bool>()))
+                .ReturnsAsync(true);
+            _chromaService = chromaMock.Object;
 
             // Initialize sync manager with all dependencies
             var doltConfigOptions = Options.Create(doltConfig);

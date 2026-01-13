@@ -78,31 +78,72 @@ public class DoltFetchTool
                 };
             }
 
+            // Get branch state BEFORE fetch
+            var branchesBeforeFetch = (await _doltCli.ListAllBranchesAsync()).ToList();
+            var remoteCommitsBefore = branchesBeforeFetch
+                .Where(b => b.IsRemote)
+                .ToDictionary(b => b.Name, b => b.LastCommitHash);
+
             // Perform fetch
-            await _doltCli.FetchAsync(remote);
+            var fetchResult = await _doltCli.FetchAsync(remote);
+
+            // Get branch state AFTER fetch
+            var branchesAfterFetch = (await _doltCli.ListAllBranchesAsync()).ToList();
+            var remoteCommitsAfter = branchesAfterFetch
+                .Where(b => b.IsRemote)
+                .ToDictionary(b => b.Name, b => b.LastCommitHash);
 
             // Get current branch info
             var currentBranch = await _doltCli.GetCurrentBranchAsync();
-            
-            // TODO: Calculate actual ahead/behind counts
-            // This would require comparing local and remote refs
+
+            // Identify new branches (exist after but not before)
+            var newBranches = remoteCommitsAfter.Keys
+                .Where(name => !remoteCommitsBefore.ContainsKey(name))
+                .Select(name => name.Replace("remotes/origin/", ""))
+                .ToList();
+
+            // Identify updated branches (commit hash changed)
+            var branchesUpdated = remoteCommitsAfter
+                .Where(kvp => remoteCommitsBefore.ContainsKey(kvp.Key) &&
+                             remoteCommitsBefore[kvp.Key] != kvp.Value)
+                .Select(kvp => new
+                {
+                    branch = kvp.Key.Replace("remotes/origin/", ""),
+                    from_commit = remoteCommitsBefore[kvp.Key],
+                    to_commit = kvp.Value
+                })
+                .ToList<object>();
+
+            // List all available remote branches for reference
+            var availableRemoteBranches = branchesAfterFetch
+                .Where(b => b.IsRemote)
+                .Select(b => b.Name.Replace("remotes/origin/", ""))
+                .ToList();
+
+            // Calculate total changes
+            int totalCommitsFetched = branchesUpdated.Count + newBranches.Count;
+
             var currentBranchStatus = new
             {
                 branch = currentBranch ?? "main",
-                behind = 0,  // TODO: Calculate actual value
-                ahead = 0    // TODO: Calculate actual value
+                behind = 0,  // Would require additional git log analysis to calculate precisely
+                ahead = 0
             };
 
-            // Get list of updated branches
-            // TODO: Track which branches were actually updated by the fetch
-            var branchesUpdated = new List<object>();
-            var newBranches = new List<string>();
-            int totalCommitsFetched = 0;
+            string successMessage;
+            if (newBranches.Any())
+            {
+                successMessage = $"Fetched {newBranches.Count} new branch(es) from remote '{remote}': {string.Join(", ", newBranches)}";
+            }
+            else if (branchesUpdated.Any())
+            {
+                successMessage = $"Fetched updates for {branchesUpdated.Count} branch(es) from remote '{remote}'";
+            }
+            else
+            {
+                successMessage = "Already up to date with remote.";
+            }
 
-            string successMessage = totalCommitsFetched > 0
-                ? $"Fetched {totalCommitsFetched} new commits from remote '{remote}'"
-                : "Already up to date with remote.";
-            
             ToolLoggingUtility.LogToolSuccess(_logger, toolName, methodName, successMessage);
             return new
             {
@@ -114,10 +155,9 @@ public class DoltFetchTool
                     new_branches = newBranches.ToArray(),
                     total_commits_fetched = totalCommitsFetched
                 },
+                available_remote_branches = availableRemoteBranches,
                 current_branch_status = currentBranchStatus,
-                message = totalCommitsFetched > 0
-                    ? $"Fetched {totalCommitsFetched} new commits. Your branch '{currentBranch}' is {currentBranchStatus.behind} commits behind origin/{currentBranch}."
-                    : "Already up to date with remote."
+                message = successMessage
             };
         }
         catch (Exception ex)

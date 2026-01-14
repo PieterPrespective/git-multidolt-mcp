@@ -1,0 +1,19 @@
+- IssueID = PP13-75
+- Please read 'Prompts/BasePrompt.md' first for general context
+- For context on the current tools please refer to the folder '\git-multidolt-mcp\multidolt-mcp\Tools\' and the chroma issue database (see BasePrompt)
+- Please create a plan for implementing the 'Import' toolset for DMMS - this toolsset should consist of 2 parts - the 'PreviewImport' tool and 'ExecuteImport' tool - both tools should be accesible by the user
+	- Currently we're only interested in importing content from pre-existing chroma databases, but at a later point we may want to include automated read-in of .md or .docx documents etc.
+	- Both tools should have the following parameters:
+		- filepath : the filepath of the datasource to import from - for now we only need to support importing from a pre-existing chroma database
+		- filter: string filter specifying what to import from the datasource, options: (note that the formatting of the below params may be changed freely to improve usability and context efficiency)
+			- {}- empty filter, import all collections and documents from the target database
+			- {collections:{remotecollection1:{import_into:'localcollection1'}, remotecollection2:{import_into:'localcollection2'}, }} - only import the documents from remotecollection1 to localcollection1 and remotecollection2 to localcollection2 
+			- {collections:{remotecollection1:{documents:['*somedocument'],import_into:'localcollection1'} - import only documents suffixed with the id 'somedocument'; note the use of asterix symbol as wildcard indicator
+	- PreviewImport tool - runned before the user executes the import - used to determine 'merge conflicts' between the current database and the database after import 
+		- Should pretty much function as 'PreviewDoltMergeTool' tool currently implemented
+		- Should list individual conflicts that will result from merge attempt, should offer guids that are consistent with the execute merge tool (so we can explicitly tell the system what to do with for specific conflicts)
+	- ExecuteImport tool - runned to actually perform the import 
+		- Should pretty much function as the 'ExecuteDoltMergeTool' tool
+- Use the chroma mcp database and project source code to understand current approaches, and create an systemic and durable design
+- Include test descriptions for validation of the new tooling
+- Output the design plan and an assignment prompt to 'Prompts/PP13-75'; use 'Prompts/PP13-69-C3.md' as a basis for prompt structure

@@ -642,8 +642,8 @@ namespace DMMS.Services
                 }
 
                 _logger.LogInformation("PP13-69-C7 TRACE: About to call SyncChromaToMatchBranch for differential sync");
-                // Sync ChromaDB to match the new branch state
-                await SyncChromaToMatchBranch(targetBranch);
+                // PP13-74: Pass preserveLocalChanges flag to sync method for carry mode support
+                await SyncChromaToMatchBranch(targetBranch, preserveLocalChanges);
                 _logger.LogInformation("PP13-69-C7 TRACE: SyncChromaToMatchBranch completed successfully");
 
                 _logger.LogInformation("PP13-69-C7 TRACE: About to update local sync state");
@@ -703,9 +703,16 @@ namespace DMMS.Services
         /// <summary>
         /// Syncs ChromaDB to match the current branch state after checkout using differential sync.
         /// PP13-69-C7: Enhanced to remove stale documents and collections for exact branch state matching.
+        /// PP13-74: Enhanced to preserve local changes when carry mode is active.
         /// </summary>
-        private async Task SyncChromaToMatchBranch(string targetBranch)
+        /// <param name="targetBranch">Target branch name</param>
+        /// <param name="preserveLocalChanges">When true (carry mode), preserve documents with is_local_change=true metadata</param>
+        private async Task SyncChromaToMatchBranch(string targetBranch, bool preserveLocalChanges = false)
         {
+            if (preserveLocalChanges)
+            {
+                _logger.LogInformation("PP13-74 CARRY MODE ACTIVE: Preserving uncommitted local changes during checkout to {Branch}", targetBranch);
+            }
             _logger.LogInformation("PP13-69-C7 DIFFERENTIAL SYNC START: Syncing ChromaDB to match branch {Branch} using differential sync", targetBranch);
             
             _logger.LogInformation("PP13-69-C7 TRACE: Getting available collections from Dolt");
@@ -719,24 +726,52 @@ namespace DMMS.Services
                 chromaCollections.Count, string.Join(", ", chromaCollections));
             
             // PP13-69-C7: Phase 1 - Remove collections that exist in ChromaDB but not in target branch
+            // PP13-74: In carry mode, preserve collections containing local changes
             var collectionsToRemove = chromaCollections.Except(doltCollections).ToList();
-            _logger.LogInformation("PP13-69-C7 TRACE: Phase 1 - Collections to remove: {Count} [{Collections}]", 
+            _logger.LogInformation("PP13-69-C7 TRACE: Phase 1 - Collections to remove: {Count} [{Collections}]",
                 collectionsToRemove.Count, string.Join(", ", collectionsToRemove));
-            
-            foreach (var collection in collectionsToRemove)
+
+            var preservedCollections = new List<string>();
+            foreach (var collection in collectionsToRemove.ToList())
             {
+                // PP13-74: In carry mode, check if collection contains local changes before removing
+                if (preserveLocalChanges)
+                {
+                    var hasLocalChanges = await CollectionHasLocalChangesAsync(collection);
+                    if (hasLocalChanges)
+                    {
+                        _logger.LogInformation("PP13-74 CARRY MODE: Preserving collection '{Collection}' containing local changes", collection);
+                        preservedCollections.Add(collection);
+                        continue;
+                    }
+                }
+
                 _logger.LogInformation("PP13-69-C7 PHASE1: Removing stale collection '{Collection}' not present in branch {Branch}", collection, targetBranch);
                 await _chromaService.DeleteCollectionAsync(collection);
                 _logger.LogInformation("PP13-69-C7 PHASE1: Successfully deleted collection '{Collection}'", collection);
             }
+
+            if (preservedCollections.Any())
+            {
+                _logger.LogInformation("PP13-74 CARRY MODE: Preserved {Count} collections with local changes: [{Collections}]",
+                    preservedCollections.Count, string.Join(", ", preservedCollections));
+            }
             
             // PP13-69-C7: Phase 2 - Sync each collection from Dolt with exact document matching
-            _logger.LogInformation("PP13-69-C7 TRACE: Phase 2 - About to sync {Count} collections exactly", doltCollections.Count);
+            // PP13-74: Pass preserveLocalChanges to preserve documents with is_local_change=true in carry mode
+            _logger.LogInformation("PP13-69-C7 TRACE: Phase 2 - About to sync {Count} collections exactly (preserveLocalChanges={Preserve})", doltCollections.Count, preserveLocalChanges);
             foreach (var collection in doltCollections)
             {
                 _logger.LogInformation("PP13-69-C7 PHASE2: Starting exact sync for collection '{Collection}'", collection);
-                await SyncCollectionToMatchDoltExactly(collection, targetBranch);
+                await SyncCollectionToMatchDoltExactly(collection, targetBranch, preserveLocalChanges);
                 _logger.LogInformation("PP13-69-C7 PHASE2: Completed exact sync for collection '{Collection}'", collection);
+            }
+
+            // PP13-74: Also sync preserved collections (which have local changes) but preserve local documents
+            foreach (var collection in preservedCollections)
+            {
+                _logger.LogInformation("PP13-74 CARRY MODE: Syncing preserved collection '{Collection}' while maintaining local changes", collection);
+                await SyncCollectionToMatchDoltExactly(collection, targetBranch, preserveLocalChanges: true);
             }
             
             _logger.LogInformation("PP13-69-C7 DIFFERENTIAL SYNC COMPLETE: Completed differential sync for branch {Branch}: {DoltCollections} Dolt collections, removed {RemovedCollections} stale collections", 
@@ -746,23 +781,25 @@ namespace DMMS.Services
         /// <summary>
         /// PP13-69-C7: Syncs a single collection to exactly match Dolt state, removing stale documents.
         /// Performs differential sync to ensure ChromaDB collection exactly matches Dolt collection.
+        /// PP13-74: Enhanced to preserve documents with is_local_change=true metadata in carry mode.
         /// </summary>
         /// <param name="collectionName">Name of the collection to sync</param>
         /// <param name="targetBranch">Target branch name for logging purposes</param>
-        private async Task SyncCollectionToMatchDoltExactly(string collectionName, string targetBranch)
+        /// <param name="preserveLocalChanges">When true, preserve documents with is_local_change=true metadata</param>
+        private async Task SyncCollectionToMatchDoltExactly(string collectionName, string targetBranch, bool preserveLocalChanges = false)
         {
-            _logger.LogInformation("PP13-69-C7 EXACT SYNC START: Syncing collection '{Collection}' to exactly match Dolt state on branch {Branch}", collectionName, targetBranch);
-            
+            _logger.LogInformation("PP13-69-C7 EXACT SYNC START: Syncing collection '{Collection}' to exactly match Dolt state on branch {Branch} (preserveLocalChanges={Preserve})", collectionName, targetBranch, preserveLocalChanges);
+
             // Get document IDs that SHOULD exist (from Dolt)
             _logger.LogInformation("PP13-69-C7 EXACT SYNC: Getting document IDs that SHOULD exist from Dolt for collection '{Collection}'", collectionName);
             var doltDocumentIds = await GetDoltDocumentIds(collectionName);
-            _logger.LogInformation("PP13-69-C7 EXACT SYNC: Dolt has {Count} documents in '{Collection}': [{Documents}]", 
+            _logger.LogInformation("PP13-69-C7 EXACT SYNC: Dolt has {Count} documents in '{Collection}': [{Documents}]",
                 doltDocumentIds.Count, collectionName, string.Join(", ", doltDocumentIds));
-            
+
             // Check if collection exists in ChromaDB
             _logger.LogInformation("PP13-69-C7 EXACT SYNC: Checking if collection '{Collection}' exists in ChromaDB", collectionName);
             var chromaCollections = await _chromaService.ListCollectionsAsync();
-            
+
             if (!chromaCollections.Contains(collectionName))
             {
                 // Collection doesn't exist in ChromaDB - create and sync normally
@@ -771,28 +808,47 @@ namespace DMMS.Services
                 _logger.LogInformation("PP13-69-C7 EXACT SYNC: FullSyncAsync completed for collection '{Collection}'", collectionName);
                 return;
             }
-            
+
             // Get document IDs that DO exist (in ChromaDB)
             _logger.LogInformation("PP13-69-C7 EXACT SYNC: Getting document IDs that DO exist in ChromaDB for collection '{Collection}'", collectionName);
             var chromaDocumentIds = await GetChromaDocumentIds(collectionName);
-            _logger.LogInformation("PP13-69-C7 EXACT SYNC: ChromaDB has {Count} documents in '{Collection}': [{Documents}]", 
+            _logger.LogInformation("PP13-69-C7 EXACT SYNC: ChromaDB has {Count} documents in '{Collection}': [{Documents}]",
                 chromaDocumentIds.Count, collectionName, string.Join(", ", chromaDocumentIds));
-            
+
             // PP13-69-C7: Calculate documents to remove (in ChromaDB but not in Dolt)
             var documentsToRemove = chromaDocumentIds.Except(doltDocumentIds).ToList();
-            
+
+            // PP13-74: In carry mode, filter out documents with is_local_change=true metadata
+            var preservedDocuments = new List<string>();
+            if (preserveLocalChanges && documentsToRemove.Any())
+            {
+                _logger.LogInformation("PP13-74 CARRY MODE: Checking {Count} documents for local change preservation in collection '{Collection}'",
+                    documentsToRemove.Count, collectionName);
+
+                var localChangeDocIds = await GetDocumentsWithLocalChangesFlagAsync(collectionName, documentsToRemove);
+
+                if (localChangeDocIds.Any())
+                {
+                    preservedDocuments = localChangeDocIds;
+                    documentsToRemove = documentsToRemove.Except(localChangeDocIds).ToList();
+
+                    _logger.LogInformation("PP13-74 CARRY MODE: Preserved {Count} local change documents in collection '{Collection}': [{Docs}]",
+                        preservedDocuments.Count, collectionName, string.Join(", ", preservedDocuments));
+                }
+            }
+
             if (documentsToRemove.Any())
             {
-                _logger.LogInformation("Removing {Count} stale documents from collection '{Collection}': [{Documents}]", 
+                _logger.LogInformation("Removing {Count} stale documents from collection '{Collection}': [{Documents}]",
                     documentsToRemove.Count, collectionName, string.Join(", ", documentsToRemove));
-                
+
                 // Get all chunk IDs for the documents to remove
                 var chunkIdsToRemove = await GetChunkIdsForDocuments(collectionName, documentsToRemove);
-                
+
                 if (chunkIdsToRemove.Any())
                 {
                     await _chromaService.DeleteDocumentsAsync(collectionName, chunkIdsToRemove);
-                    _logger.LogInformation("Successfully removed {ChunkCount} chunks for {DocCount} stale documents from collection '{Collection}'", 
+                    _logger.LogInformation("Successfully removed {ChunkCount} chunks for {DocCount} stale documents from collection '{Collection}'",
                         chunkIdsToRemove.Count, documentsToRemove.Count, collectionName);
                 }
             }
@@ -800,12 +856,23 @@ namespace DMMS.Services
             {
                 _logger.LogInformation("No stale documents to remove from collection '{Collection}'", collectionName);
             }
-            
-            // Perform normal sync to add/update documents from Dolt
-            await FullSyncAsync(collectionName);
-            
-            _logger.LogInformation("Completed exact sync for collection '{Collection}' on branch {Branch}: removed {RemovedCount} stale documents", 
-                collectionName, targetBranch, documentsToRemove.Count);
+
+            // PP13-74: When preserving local changes, use incremental sync to avoid deleting the collection
+            // FullSyncAsync deletes and recreates the collection, which would lose preserved local documents
+            if (preservedDocuments.Any())
+            {
+                _logger.LogInformation("PP13-74 CARRY MODE: Using incremental sync to preserve {Count} local documents in collection '{Collection}'",
+                    preservedDocuments.Count, collectionName);
+                await IncrementalSyncAsync(collectionName);
+            }
+            else
+            {
+                // Perform normal full sync to add/update documents from Dolt
+                await FullSyncAsync(collectionName);
+            }
+
+            _logger.LogInformation("Completed exact sync for collection '{Collection}' on branch {Branch}: removed {RemovedCount} stale documents, preserved {PreservedCount} local changes",
+                collectionName, targetBranch, documentsToRemove.Count, preservedDocuments.Count);
         }
 
         /// <summary>
@@ -2371,6 +2438,110 @@ namespace DMMS.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to retrieve document IDs from ChromaDB for collection '{Collection}'", collectionName);
+                return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// PP13-74: Checks if a collection contains any documents with is_local_change=true metadata.
+        /// Used to determine whether a collection should be preserved in carry mode.
+        /// </summary>
+        /// <param name="collectionName">Name of the collection to check</param>
+        /// <returns>True if the collection contains any local change documents</returns>
+        private async Task<bool> CollectionHasLocalChangesAsync(string collectionName)
+        {
+            try
+            {
+                var result = await _chromaService.GetDocumentsAsync(collectionName);
+
+                if (result is IDictionary<string, object> dict && dict.ContainsKey("metadatas"))
+                {
+                    var metadatas = dict["metadatas"] as IList<object>;
+                    if (metadatas != null)
+                    {
+                        foreach (var metadata in metadatas)
+                        {
+                            if (metadata is IDictionary<string, object> metaDict)
+                            {
+                                if (metaDict.TryGetValue("is_local_change", out var isLocalChange))
+                                {
+                                    if (isLocalChange is bool b && b)
+                                        return true;
+                                    if (isLocalChange?.ToString().Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+                                        return true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PP13-74: Failed to check local changes for collection '{Collection}'", collectionName);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// PP13-74: Gets base document IDs that have is_local_change=true metadata.
+        /// Filters the provided document IDs to only those marked as local changes.
+        /// </summary>
+        /// <param name="collectionName">Name of the collection</param>
+        /// <param name="documentIdsToCheck">List of base document IDs to check</param>
+        /// <returns>List of base document IDs that have is_local_change=true</returns>
+        private async Task<List<string>> GetDocumentsWithLocalChangesFlagAsync(string collectionName, List<string> documentIdsToCheck)
+        {
+            try
+            {
+                var localChangeDocs = new HashSet<string>();
+                var result = await _chromaService.GetDocumentsAsync(collectionName);
+
+                if (result is IDictionary<string, object> dict &&
+                    dict.ContainsKey("ids") && dict.ContainsKey("metadatas"))
+                {
+                    var ids = dict["ids"] as IList<object>;
+                    var metadatas = dict["metadatas"] as IList<object>;
+
+                    if (ids != null && metadatas != null && ids.Count == metadatas.Count)
+                    {
+                        for (int i = 0; i < ids.Count; i++)
+                        {
+                            if (ids[i] == null) continue;
+
+                            var chunkId = ids[i].ToString();
+                            var baseDocId = ExtractBaseDocumentId(chunkId);
+
+                            // Only check documents we're considering for removal
+                            if (!documentIdsToCheck.Contains(baseDocId))
+                                continue;
+
+                            var metadata = metadatas[i] as IDictionary<string, object>;
+                            if (metadata != null && metadata.TryGetValue("is_local_change", out var isLocalChange))
+                            {
+                                bool isLocal = false;
+                                if (isLocalChange is bool b)
+                                    isLocal = b;
+                                else if (isLocalChange?.ToString().Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+                                    isLocal = true;
+
+                                if (isLocal)
+                                {
+                                    localChangeDocs.Add(baseDocId);
+                                    _logger.LogDebug("PP13-74: Document '{DocId}' (chunk '{ChunkId}') marked as local change - will be preserved",
+                                        baseDocId, chunkId);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return localChangeDocs.ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "PP13-74: Failed to check local change metadata for documents in collection '{Collection}'", collectionName);
                 return new List<string>();
             }
         }

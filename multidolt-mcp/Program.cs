@@ -95,6 +95,11 @@ builder.Services.AddSingleton<ICollectionChangeDetector, CollectionChangeDetecto
 builder.Services.AddSingleton<IConflictAnalyzer, ConflictAnalyzer>();
 builder.Services.AddSingleton<IMergeConflictResolver, MergeConflictResolver>();
 
+// Register import services (PP13-75)
+builder.Services.AddSingleton<IExternalChromaDbReader, ExternalChromaDbReader>();
+builder.Services.AddSingleton<IImportAnalyzer, ImportAnalyzer>();
+builder.Services.AddSingleton<IImportExecutor, ImportExecutor>();
+
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
@@ -140,7 +145,11 @@ builder.Services
     
     // Dolt Version Control Tools - Merge Operations
     .WithTools<PreviewDoltMergeTool>()
-    .WithTools<ExecuteDoltMergeTool>();
+    .WithTools<ExecuteDoltMergeTool>()
+
+    // Import Tools (PP13-75)
+    .WithTools<PreviewImportTool>()
+    .WithTools<ExecuteImportTool>();
 
 var host = builder.Build();
 

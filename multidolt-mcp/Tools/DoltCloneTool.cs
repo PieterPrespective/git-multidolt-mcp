@@ -20,11 +20,20 @@ public class DoltCloneTool
     private readonly ISyncStateTracker _syncStateTracker;
     private readonly string _repositoryPath;
     private readonly DoltConfiguration _doltConfig;
+    private readonly IDmmsStateManifest _manifestService;
+    private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
     /// Initializes a new instance of the DoltCloneTool class
     /// </summary>
-    public DoltCloneTool(ILogger<DoltCloneTool> logger, IDoltCli doltCli, ISyncManagerV2 syncManager, ISyncStateTracker syncStateTracker, IOptions<DoltConfiguration> config)
+    public DoltCloneTool(
+        ILogger<DoltCloneTool> logger,
+        IDoltCli doltCli,
+        ISyncManagerV2 syncManager,
+        ISyncStateTracker syncStateTracker,
+        IOptions<DoltConfiguration> config,
+        IDmmsStateManifest manifestService,
+        ISyncStateChecker syncStateChecker)
     {
         _logger = logger;
         _doltCli = doltCli;
@@ -32,6 +41,8 @@ public class DoltCloneTool
         _syncStateTracker = syncStateTracker;
         _repositoryPath = config.Value.RepositoryPath;
         _doltConfig = config.Value;
+        _manifestService = manifestService;
+        _syncStateChecker = syncStateChecker;
     }
 
     /// <summary>
@@ -591,11 +602,14 @@ public class DoltCloneTool
                 _logger.LogError(ex, "Failed to sync to ChromaDB after clone");
             }
 
-            string successMessage = !isCloneSuccessful 
+            string successMessage = !isCloneSuccessful
                 ? $"Repository was empty at '{formattedUrl}'. Initialized local repository with initial commits and configured remote 'origin'. Repository is now ready for use."
                 : syncSucceeded
                     ? $"Successfully cloned repository from '{formattedUrl}' and synced {documentsLoaded} documents to ChromaDB"
                     : $"Successfully cloned repository from '{formattedUrl}' but failed to sync to ChromaDB: {syncError}. Documents can be manually synced later.";
+
+            // PP13-79-C1: Create/update manifest after successful clone
+            await CreateOrUpdateManifestAfterCloneAsync(formattedUrl, currentBranch, currentCommitHash);
 
             ToolLoggingUtility.LogToolSuccess(_logger, toolName, methodName, successMessage);
             return new
@@ -1341,6 +1355,80 @@ INSERT INTO sync_operations (
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// PP13-79-C1: Creates or updates the manifest after successful clone
+    /// Sets remote_url, current_branch, and current_commit
+    /// </summary>
+    private async Task CreateOrUpdateManifestAfterCloneAsync(string remoteUrl, string? branch, string? commitHash)
+    {
+        try
+        {
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCloneTool), "PP13-79-C1: Creating/updating manifest after clone...");
+
+            var projectRoot = await _syncStateChecker.GetProjectRootAsync();
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                projectRoot = Directory.GetCurrentDirectory();
+            }
+
+            // Check if manifest exists
+            var existingManifest = await _manifestService.ReadManifestAsync(projectRoot);
+
+            if (existingManifest != null)
+            {
+                // Update existing manifest
+                var updatedDolt = existingManifest.Dolt with
+                {
+                    RemoteUrl = remoteUrl,
+                    CurrentCommit = commitHash,
+                    CurrentBranch = branch ?? "main",
+                    DefaultBranch = branch ?? "main"
+                };
+
+                var updatedManifest = existingManifest with
+                {
+                    Dolt = updatedDolt,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _manifestService.WriteManifestAsync(projectRoot, updatedManifest);
+            }
+            else
+            {
+                // Create new manifest
+                var newManifest = _manifestService.CreateDefaultManifest(
+                    remoteUrl: remoteUrl,
+                    defaultBranch: branch ?? "main",
+                    initMode: "auto"
+                );
+
+                // Update with current state
+                var doltWithState = newManifest.Dolt with
+                {
+                    CurrentCommit = commitHash,
+                    CurrentBranch = branch ?? "main"
+                };
+
+                newManifest = newManifest with
+                {
+                    Dolt = doltWithState,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _manifestService.WriteManifestAsync(projectRoot, newManifest);
+            }
+
+            _syncStateChecker.InvalidateCache();
+
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCloneTool),
+                $"✅ PP13-79-C1: Manifest created/updated with remote: {remoteUrl}, branch: {branch ?? "main"}");
+        }
+        catch (Exception ex)
+        {
+            ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltCloneTool), $"⚠️ PP13-79-C1: Failed to create/update manifest: {ex.Message}");
         }
     }
 }

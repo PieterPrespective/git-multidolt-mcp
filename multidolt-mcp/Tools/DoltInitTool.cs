@@ -15,15 +15,24 @@ public class DoltInitTool
     private readonly ILogger<DoltInitTool> _logger;
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
+    private readonly IDmmsStateManifest _manifestService;
+    private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
     /// Initializes a new instance of the DoltInitTool class
     /// </summary>
-    public DoltInitTool(ILogger<DoltInitTool> logger, IDoltCli doltCli, ISyncManagerV2 syncManager)
+    public DoltInitTool(
+        ILogger<DoltInitTool> logger,
+        IDoltCli doltCli,
+        ISyncManagerV2 syncManager,
+        IDmmsStateManifest manifestService,
+        ISyncStateChecker syncStateChecker)
     {
         _logger = logger;
         _doltCli = doltCli;
         _syncManager = syncManager;
+        _manifestService = manifestService;
+        _syncStateChecker = syncStateChecker;
     }
 
     /// <summary>
@@ -182,7 +191,10 @@ public class DoltInitTool
                     : $"Repository initialized with {documentsImported} documents."
             };
             
-            ToolLoggingUtility.LogToolSuccess(_logger, toolName, methodName, 
+            // PP13-79-C1: Create/update manifest after successful init
+            await CreateOrUpdateManifestAfterInitAsync(initialCommitHash, initial_branch, remote_url);
+
+            ToolLoggingUtility.LogToolSuccess(_logger, toolName, methodName,
                 $"Repository initialized with {documentsImported} documents, remote configured: {remoteConfigured}");
             return response;
         }
@@ -195,6 +207,78 @@ public class DoltInitTool
                 error = "OPERATION_FAILED",
                 message = $"Failed to initialize repository: {ex.Message}"
             };
+        }
+    }
+
+    /// <summary>
+    /// PP13-79-C1: Creates or updates the manifest after successful init
+    /// </summary>
+    private async Task CreateOrUpdateManifestAfterInitAsync(string? commitHash, string branch, string? remoteUrl)
+    {
+        try
+        {
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltInitTool), "PP13-79-C1: Creating/updating manifest after init...");
+
+            var projectRoot = await _syncStateChecker.GetProjectRootAsync();
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                projectRoot = Directory.GetCurrentDirectory();
+            }
+
+            // Check if manifest exists
+            var existingManifest = await _manifestService.ReadManifestAsync(projectRoot);
+
+            if (existingManifest != null)
+            {
+                // Update existing manifest
+                var updatedDolt = existingManifest.Dolt with
+                {
+                    CurrentCommit = commitHash,
+                    CurrentBranch = branch,
+                    RemoteUrl = remoteUrl ?? existingManifest.Dolt.RemoteUrl,
+                    DefaultBranch = branch
+                };
+
+                var updatedManifest = existingManifest with
+                {
+                    Dolt = updatedDolt,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _manifestService.WriteManifestAsync(projectRoot, updatedManifest);
+            }
+            else
+            {
+                // Create new manifest
+                var newManifest = _manifestService.CreateDefaultManifest(
+                    remoteUrl: remoteUrl,
+                    defaultBranch: branch,
+                    initMode: "auto"
+                );
+
+                // Update with current state
+                var doltWithCommit = newManifest.Dolt with
+                {
+                    CurrentCommit = commitHash,
+                    CurrentBranch = branch
+                };
+
+                newManifest = newManifest with
+                {
+                    Dolt = doltWithCommit,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                await _manifestService.WriteManifestAsync(projectRoot, newManifest);
+            }
+
+            _syncStateChecker.InvalidateCache();
+
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltInitTool), $"✅ PP13-79-C1: Manifest created/updated");
+        }
+        catch (Exception ex)
+        {
+            ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltInitTool), $"⚠️ PP13-79-C1: Failed to create/update manifest: {ex.Message}");
         }
     }
 }

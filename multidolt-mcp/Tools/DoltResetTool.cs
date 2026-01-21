@@ -15,15 +15,24 @@ public class DoltResetTool
     private readonly ILogger<DoltResetTool> _logger;
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
+    private readonly IDmmsStateManifest _manifestService;
+    private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
     /// Initializes a new instance of the DoltResetTool class
     /// </summary>
-    public DoltResetTool(ILogger<DoltResetTool> logger, IDoltCli doltCli, ISyncManagerV2 syncManager)
+    public DoltResetTool(
+        ILogger<DoltResetTool> logger,
+        IDoltCli doltCli,
+        ISyncManagerV2 syncManager,
+        IDmmsStateManifest manifestService,
+        ISyncStateChecker syncStateChecker)
     {
         _logger = logger;
         _doltCli = doltCli;
         _syncManager = syncManager;
+        _manifestService = manifestService;
+        _syncStateChecker = syncStateChecker;
     }
 
     /// <summary>
@@ -115,6 +124,10 @@ public class DoltResetTool
 
             // Get new state
             var toCommit = await _doltCli.GetHeadCommitHashAsync();
+            var currentBranch = await _doltCli.GetCurrentBranchAsync();
+
+            // PP13-79-C1: Update manifest after successful reset
+            await UpdateManifestAfterResetAsync(toCommit, currentBranch);
 
             // Prepare discarded changes summary
             var discardedChanges = hasChanges ? new
@@ -167,6 +180,43 @@ public class DoltResetTool
                 error = errorCode,
                 message = $"Failed to reset: {ex.Message}"
             };
+        }
+    }
+
+    /// <summary>
+    /// PP13-79-C1: Updates the manifest after a successful reset
+    /// </summary>
+    private async Task UpdateManifestAfterResetAsync(string? commitHash, string? branch)
+    {
+        if (string.IsNullOrEmpty(commitHash))
+        {
+            return;
+        }
+
+        try
+        {
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltResetTool), $"PP13-79-C1: Updating manifest after reset to {commitHash.Substring(0, 7)}...");
+
+            var projectRoot = await _syncStateChecker.GetProjectRootAsync();
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                return;
+            }
+
+            var manifestExists = await _manifestService.ManifestExistsAsync(projectRoot);
+            if (!manifestExists)
+            {
+                return;
+            }
+
+            await _manifestService.UpdateDoltCommitAsync(projectRoot, commitHash, branch ?? "main");
+            _syncStateChecker.InvalidateCache();
+
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltResetTool), $"✅ PP13-79-C1: Manifest updated with commit {commitHash.Substring(0, 7)}");
+        }
+        catch (Exception ex)
+        {
+            ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltResetTool), $"⚠️ PP13-79-C1: Failed to update manifest: {ex.Message}");
         }
     }
 }

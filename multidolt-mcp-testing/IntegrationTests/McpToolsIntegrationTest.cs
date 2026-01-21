@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 using System.Text.Json;
+using Moq;
 
 namespace DMMSTesting.IntegrationTests
 {
@@ -100,9 +101,14 @@ namespace DMMSTesting.IntegrationTests
             user.ChromaPeekCollectionTool = new ChromaPeekCollectionTool(
                 loggerFactory.CreateLogger<ChromaPeekCollectionTool>(), user.ChromaService);
                 
+            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            var syncStateChecker = new Mock<ISyncStateChecker>().Object;
+
             // Initialize Dolt tools
             user.DoltInitTool = new DoltInitTool(
-                loggerFactory.CreateLogger<DoltInitTool>(), user.DoltCli, user.SyncManager);
+                loggerFactory.CreateLogger<DoltInitTool>(), user.DoltCli, user.SyncManager,
+                manifestService, syncStateChecker);
             user.DoltStatusTool = new DoltStatusTool(
                 loggerFactory.CreateLogger<DoltStatusTool>(), user.DoltCli, user.SyncManager);
             user.DoltBranchesTool = new DoltBranchesTool(
@@ -110,20 +116,24 @@ namespace DMMSTesting.IntegrationTests
             user.DoltCommitsTool = new DoltCommitsTool(
                 loggerFactory.CreateLogger<DoltCommitsTool>(), user.DoltCli);
             user.DoltCommitTool = new DoltCommitTool(
-                loggerFactory.CreateLogger<DoltCommitTool>(), user.DoltCli, user.SyncManager, (ISyncStateTracker)user.DeletionTracker);
+                loggerFactory.CreateLogger<DoltCommitTool>(), user.DoltCli, user.SyncManager, (ISyncStateTracker)user.DeletionTracker,
+                manifestService, syncStateChecker);
             user.DoltCheckoutTool = new DoltCheckoutTool(
-                loggerFactory.CreateLogger<DoltCheckoutTool>(), user.DoltCli, user.SyncManager, (ISyncStateTracker)user.DeletionTracker);
+                loggerFactory.CreateLogger<DoltCheckoutTool>(), user.DoltCli, user.SyncManager, (ISyncStateTracker)user.DeletionTracker,
+                manifestService, syncStateChecker);
             user.DoltPullTool = new DoltPullTool(
-                loggerFactory.CreateLogger<DoltPullTool>(), user.DoltCli, user.SyncManager);
+                loggerFactory.CreateLogger<DoltPullTool>(), user.DoltCli, user.SyncManager,
+                manifestService, syncStateChecker);
             user.DoltPushTool = new DoltPushTool(
                 loggerFactory.CreateLogger<DoltPushTool>(), user.DoltCli, user.SyncManager);
             user.DoltFetchTool = new DoltFetchTool(
                 loggerFactory.CreateLogger<DoltFetchTool>(), user.DoltCli);
             user.DoltCloneTool = new DoltCloneTool(
                 loggerFactory.CreateLogger<DoltCloneTool>(), user.DoltCli, user.SyncManager, (ISyncStateTracker)user.DeletionTracker,
-                Options.Create(new DoltConfiguration { RepositoryPath = user.DoltRepoPath, DoltExecutablePath = "dolt" }));
+                Options.Create(new DoltConfiguration { RepositoryPath = user.DoltRepoPath, DoltExecutablePath = "dolt" }),
+                manifestService, syncStateChecker);
             user.DoltResetTool = new DoltResetTool(
-                loggerFactory.CreateLogger<DoltResetTool>(), user.DoltCli, user.SyncManager);
+                loggerFactory.CreateLogger<DoltResetTool>(), user.DoltCli, user.SyncManager, manifestService, syncStateChecker);
             user.DoltShowTool = new DoltShowTool(
                 loggerFactory.CreateLogger<DoltShowTool>(), user.DoltCli);
         }

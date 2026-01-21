@@ -15,15 +15,24 @@ public class DoltPullTool
     private readonly ILogger<DoltPullTool> _logger;
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
+    private readonly IDmmsStateManifest _manifestService;
+    private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
     /// Initializes a new instance of the DoltPullTool class
     /// </summary>
-    public DoltPullTool(ILogger<DoltPullTool> logger, IDoltCli doltCli, ISyncManagerV2 syncManager)
+    public DoltPullTool(
+        ILogger<DoltPullTool> logger,
+        IDoltCli doltCli,
+        ISyncManagerV2 syncManager,
+        IDmmsStateManifest manifestService,
+        ISyncStateChecker syncStateChecker)
     {
         _logger = logger;
         _doltCli = doltCli;
         _syncManager = syncManager;
+        _manifestService = manifestService;
+        _syncStateChecker = syncStateChecker;
     }
 
     /// <summary>
@@ -162,14 +171,18 @@ public class DoltPullTool
             
             if (pullResult.Success)
             {
-                ToolLoggingUtility.LogToolSuccess(_logger, toolName, methodName, 
+                ToolLoggingUtility.LogToolSuccess(_logger, toolName, methodName,
                     $"Successfully pulled from {remote}/{branch ?? "current branch"}");
+
+                // PP13-79-C1: Update manifest after successful pull
+                var currentBranch = await _doltCli.GetCurrentBranchAsync();
+                await UpdateManifestAfterPullAsync(newCommitHash, currentBranch);
             }
             else
             {
                 ToolLoggingUtility.LogToolFailure(_logger, toolName, methodName, "PULL_FAILED");
             }
-            
+
             return response;
         }
         catch (Exception ex)
@@ -188,6 +201,43 @@ public class DoltPullTool
                 error = errorCode,
                 message = $"Failed to pull from remote: {ex.Message}"
             };
+        }
+    }
+
+    /// <summary>
+    /// PP13-79-C1: Updates the manifest after a successful pull
+    /// </summary>
+    private async Task UpdateManifestAfterPullAsync(string? commitHash, string? branch)
+    {
+        if (string.IsNullOrEmpty(commitHash))
+        {
+            return;
+        }
+
+        try
+        {
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltPullTool), $"PP13-79-C1: Updating manifest after pull...");
+
+            var projectRoot = await _syncStateChecker.GetProjectRootAsync();
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                return;
+            }
+
+            var manifestExists = await _manifestService.ManifestExistsAsync(projectRoot);
+            if (!manifestExists)
+            {
+                return;
+            }
+
+            await _manifestService.UpdateDoltCommitAsync(projectRoot, commitHash, branch ?? "main");
+            _syncStateChecker.InvalidateCache();
+
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltPullTool), $"✅ PP13-79-C1: Manifest updated with commit {commitHash.Substring(0, 7)}");
+        }
+        catch (Exception ex)
+        {
+            ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltPullTool), $"⚠️ PP13-79-C1: Failed to update manifest: {ex.Message}");
         }
     }
 }

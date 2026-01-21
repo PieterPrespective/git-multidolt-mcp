@@ -6,6 +6,7 @@ using DMMS.Models;
 using DMMS.Services;
 using DMMS.Tools;
 using System.Text.Json;
+using Moq;
 
 namespace DMMS.Testing.IntegrationTests
 {
@@ -2075,12 +2076,17 @@ namespace DMMS.Testing.IntegrationTests
 
                 // Step 5: Execute merge using ExecuteDoltMergeTool (this should now trigger ChromaDB sync)
                 var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+                // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+                var manifestService = new Mock<IDmmsStateManifest>().Object;
+                var syncStateChecker = new Mock<ISyncStateChecker>().Object;
                 var executeTool = new ExecuteDoltMergeTool(
                     loggerFactory.CreateLogger<ExecuteDoltMergeTool>(),
                     _doltCli,
                     _conflictResolver,
                     _syncManager,
-                    _conflictAnalyzer);
+                    _conflictAnalyzer,
+                    manifestService,
+                    syncStateChecker);
 
                 var resolutionsJson = JsonSerializer.Serialize(conflictResolutions);
                 _logger.LogInformation("PP13-73-C4: Executing merge with resolutions: {Json}", resolutionsJson);
@@ -2213,12 +2219,17 @@ namespace DMMS.Testing.IntegrationTests
 
                 // Execute merge
                 var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+                // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+                var manifestService2 = new Mock<IDmmsStateManifest>().Object;
+                var syncStateChecker2 = new Mock<ISyncStateChecker>().Object;
                 var executeTool = new ExecuteDoltMergeTool(
                     loggerFactory.CreateLogger<ExecuteDoltMergeTool>(),
                     _doltCli,
                     _conflictResolver,
                     _syncManager,
-                    _conflictAnalyzer);
+                    _conflictAnalyzer,
+                    manifestService2,
+                    syncStateChecker2);
 
                 var mergeResult = await executeTool.ExecuteDoltMerge(
                     source_branch: "pp73c4-stats-b2",
@@ -2318,12 +2329,17 @@ namespace DMMS.Testing.IntegrationTests
 
                 // Execute with keep_theirs
                 var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
+                // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+                var manifestService3 = new Mock<IDmmsStateManifest>().Object;
+                var syncStateChecker3 = new Mock<ISyncStateChecker>().Object;
                 var executeTool = new ExecuteDoltMergeTool(
                     loggerFactory.CreateLogger<ExecuteDoltMergeTool>(),
                     _doltCli,
                     _conflictResolver,
                     _syncManager,
-                    _conflictAnalyzer);
+                    _conflictAnalyzer,
+                    manifestService3,
+                    syncStateChecker3);
 
                 var mergeResult = await executeTool.ExecuteDoltMerge(
                     source_branch: "pp73c4-theirs",

@@ -103,6 +103,14 @@ builder.Services.AddSingleton<IImportExecutor, ImportExecutor>();
 // Register legacy database migration service (PP13-76)
 builder.Services.AddSingleton<ILegacyDbMigrator, LegacyDbMigrator>();
 
+// PP13-79: Register Git integration and manifest services
+builder.Services.AddSingleton<IGitIntegration, GitIntegration>();
+builder.Services.AddSingleton<IDmmsStateManifest, DmmsStateManifest>();
+builder.Services.AddSingleton<IDmmsInitializer, DmmsInitializer>();
+
+// PP13-79-C1: Register sync state checker for manifest synchronization
+builder.Services.AddSingleton<ISyncStateChecker, SyncStateChecker>();
+
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
@@ -152,7 +160,12 @@ builder.Services
 
     // Import Tools (PP13-75)
     .WithTools<PreviewImportTool>()
-    .WithTools<ExecuteImportTool>();
+    .WithTools<ExecuteImportTool>()
+
+    // PP13-79: Manifest Tools
+    .WithTools<InitManifestTool>()
+    .WithTools<UpdateManifestTool>()
+    .WithTools<SyncToManifestTool>();
 
 var host = builder.Build();
 
@@ -319,9 +332,228 @@ catch (Exception ex)
         var logger = host.Services.GetService<ILogger<Program>>();
         logger?.LogCritical(ex, "FATAL: Failed to initialize sync services - application cannot continue");
     }
-    
+
     // Fail-fast: Exit with non-zero code to signal initialization failure
     Environment.Exit(3);
+}
+
+// PP13-79: Manifest-based DMMS state initialization
+if (doltConfig.UseManifest)
+{
+    try
+    {
+        var manifestService = host.Services.GetRequiredService<IDmmsStateManifest>();
+        var initializer = host.Services.GetRequiredService<IDmmsInitializer>();
+        var gitService = host.Services.GetRequiredService<IGitIntegration>();
+        var syncStateChecker = host.Services.GetRequiredService<ISyncStateChecker>();
+
+        if (enableLogging)
+        {
+            var logger = host.Services.GetService<ILogger<Program>>();
+            logger?.LogInformation("PP13-79: Checking for DMMS manifest...");
+        }
+
+        // Detect project root
+        string? projectRoot = serverConfig.ProjectRoot;
+
+        if (string.IsNullOrEmpty(projectRoot) && serverConfig.AutoDetectProjectRoot)
+        {
+            projectRoot = await gitService.GetGitRootAsync(Directory.GetCurrentDirectory());
+        }
+
+        projectRoot ??= Directory.GetCurrentDirectory();
+
+        // Check for manifest
+        var manifest = await manifestService.ReadManifestAsync(projectRoot);
+
+        if (manifest != null)
+        {
+            if (enableLogging)
+            {
+                var logger = host.Services.GetService<ILogger<Program>>();
+                logger?.LogInformation("PP13-79: Found manifest at project root: {ProjectRoot}", projectRoot);
+            }
+
+            // Check if initialization is needed based on mode
+            var initMode = serverConfig.InitMode.ToLowerInvariant();
+
+            if (initMode == "auto" || initMode == DMMS.Models.InitializationMode.Auto)
+            {
+                var check = await initializer.CheckInitializationNeededAsync(manifest);
+
+                if (check.NeedsInitialization)
+                {
+                    // PP13-79-C1: Safe sync check - don't sync if it would lose local work
+                    var syncState = await syncStateChecker.CheckSyncStateAsync();
+                    var isSafeToSync = await syncStateChecker.IsSafeToSyncAsync();
+
+                    if (!isSafeToSync)
+                    {
+                        // Not safe to sync - has local changes or is ahead of manifest
+                        if (enableLogging)
+                        {
+                            var logger = host.Services.GetService<ILogger<Program>>();
+                            if (syncState.HasLocalChanges)
+                            {
+                                logger?.LogWarning("PP13-79-C1: ⚠ Skipping auto-sync: You have uncommitted local changes that would be lost.");
+                                logger?.LogWarning("PP13-79-C1: Local state: {Branch}/{Commit}", syncState.LocalBranch, syncState.LocalCommit?.Substring(0, 7) ?? "none");
+                                logger?.LogWarning("PP13-79-C1: Manifest state: {Branch}/{Commit}", syncState.ManifestBranch, syncState.ManifestCommit?.Substring(0, 7) ?? "none");
+                                logger?.LogWarning("PP13-79-C1: Commit your changes and call sync_to_manifest to synchronize.");
+                            }
+                            else if (syncState.LocalAheadOfManifest)
+                            {
+                                logger?.LogWarning("PP13-79-C1: ⚠ Skipping auto-sync: Local Dolt is ahead of manifest (has commits not in manifest).");
+                                logger?.LogWarning("PP13-79-C1: Call update_manifest to record current state, or sync_to_manifest to reset.");
+                            }
+                            else
+                            {
+                                logger?.LogWarning("PP13-79-C1: ⚠ Skipping auto-sync: {Reason}", syncState.Reason);
+                            }
+                        }
+                        // Continue with local state - warning will appear in tool responses
+                    }
+                    else
+                    {
+                        // Safe to sync - proceed with initialization
+                        if (enableLogging)
+                        {
+                            var logger = host.Services.GetService<ILogger<Program>>();
+                            logger?.LogInformation("PP13-79: Initialization needed - {Reason}", check.Reason);
+                            logger?.LogInformation("PP13-79: Initializing from manifest...");
+                        }
+
+                        var result = await initializer.InitializeFromManifestAsync(manifest, projectRoot);
+
+                        if (enableLogging)
+                        {
+                            var logger = host.Services.GetService<ILogger<Program>>();
+                            if (result.Success)
+                            {
+                                logger?.LogInformation("PP13-79: ✓ Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
+                                    result.ActionTaken,
+                                    result.DoltBranch,
+                                    result.DoltCommit?.Substring(0, Math.Min(7, result.DoltCommit?.Length ?? 0)));
+
+                                // Invalidate sync state cache after successful initialization
+                                syncStateChecker.InvalidateCache();
+                            }
+                            else
+                            {
+                                logger?.LogWarning("PP13-79: ⚠ Initialization failed: {Error}. Continuing with local state.", result.ErrorMessage);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if (enableLogging)
+                    {
+                        var logger = host.Services.GetService<ILogger<Program>>();
+                        logger?.LogInformation("PP13-79: ✓ Current state matches manifest - no initialization needed");
+                    }
+                }
+            }
+            else if (initMode == "manual" || initMode == DMMS.Models.InitializationMode.Manual)
+            {
+                if (enableLogging)
+                {
+                    var logger = host.Services.GetService<ILogger<Program>>();
+                    logger?.LogInformation("PP13-79: Init mode is 'manual' - skipping automatic initialization. Use sync_to_manifest tool to sync.");
+                }
+            }
+            else if (initMode == "disabled" || initMode == DMMS.Models.InitializationMode.Disabled)
+            {
+                if (enableLogging)
+                {
+                    var logger = host.Services.GetService<ILogger<Program>>();
+                    logger?.LogInformation("PP13-79: Manifest-based initialization is disabled");
+                }
+            }
+        }
+        else
+        {
+            // PP13-79-C1: Auto-create manifest on first run
+            if (enableLogging)
+            {
+                var logger = host.Services.GetService<ILogger<Program>>();
+                logger?.LogInformation("PP13-79-C1: No manifest found at project root: {ProjectRoot}. Auto-creating...", projectRoot);
+            }
+
+            // Get DOLT_REMOTE_URL from environment if set (used only for initial manifest creation)
+            var remoteUrl = Environment.GetEnvironmentVariable("DOLT_REMOTE_URL");
+
+            // Create initial manifest
+            manifest = manifestService.CreateDefaultManifest(
+                remoteUrl: remoteUrl,
+                defaultBranch: "main",
+                initMode: serverConfig.InitMode
+            );
+
+            // Write the manifest
+            await manifestService.WriteManifestAsync(projectRoot, manifest);
+
+            if (enableLogging)
+            {
+                var logger = host.Services.GetService<ILogger<Program>>();
+                logger?.LogInformation("PP13-79-C1: ✓ Auto-created manifest at: {Path}", manifestService.GetManifestPath(projectRoot));
+                if (!string.IsNullOrEmpty(remoteUrl))
+                {
+                    logger?.LogInformation("PP13-79-C1: Manifest initialized with remote URL from DOLT_REMOTE_URL: {RemoteUrl}", remoteUrl);
+                }
+            }
+
+            // Now proceed with initialization using the newly created manifest
+            var initMode = serverConfig.InitMode.ToLowerInvariant();
+
+            if (initMode == "auto" || initMode == DMMS.Models.InitializationMode.Auto)
+            {
+                var check = await initializer.CheckInitializationNeededAsync(manifest);
+
+                if (check.NeedsInitialization)
+                {
+                    if (enableLogging)
+                    {
+                        var logger = host.Services.GetService<ILogger<Program>>();
+                        logger?.LogInformation("PP13-79-C1: Initialization needed - {Reason}", check.Reason);
+                        logger?.LogInformation("PP13-79-C1: Initializing from auto-created manifest...");
+                    }
+
+                    var result = await initializer.InitializeFromManifestAsync(manifest, projectRoot);
+
+                    if (enableLogging)
+                    {
+                        var logger = host.Services.GetService<ILogger<Program>>();
+                        if (result.Success)
+                        {
+                            logger?.LogInformation("PP13-79-C1: ✓ Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
+                                result.ActionTaken,
+                                result.DoltBranch,
+                                result.DoltCommit?.Substring(0, Math.Min(7, result.DoltCommit?.Length ?? 0)));
+
+                            // Update manifest with current state after initialization
+                            if (!string.IsNullOrEmpty(result.DoltCommit))
+                            {
+                                await manifestService.UpdateDoltCommitAsync(projectRoot, result.DoltCommit, result.DoltBranch ?? "main");
+                            }
+                        }
+                        else
+                        {
+                            logger?.LogWarning("PP13-79-C1: ⚠ Initialization failed: {Error}. Continuing with local state.", result.ErrorMessage);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        // Don't fail startup due to manifest issues - log warning and continue
+        if (enableLogging)
+        {
+            var logger = host.Services.GetService<ILogger<Program>>();
+            logger?.LogWarning(ex, "PP13-79: Error during manifest-based initialization. Continuing with local state.");
+        }
+    }
 }
 
 if (enableLogging)
@@ -369,7 +601,12 @@ public static class ConfigurationUtility
         options.ChromaMode = Environment.GetEnvironmentVariable("CHROMA_MODE") ?? "persistent";
         options.ChromaDataPath = Environment.GetEnvironmentVariable("CHROMA_DATA_PATH") ?? "./chroma_data";
         options.DataPath = Environment.GetEnvironmentVariable("DMMS_DATA_PATH") ?? "./data";
-        
+
+        // PP13-79: Project root detection settings
+        options.ProjectRoot = Environment.GetEnvironmentVariable("DMMS_PROJECT_ROOT");
+        options.AutoDetectProjectRoot = !bool.TryParse(Environment.GetEnvironmentVariable("DMMS_AUTO_DETECT_PROJECT_ROOT"), out var autoDetect) || autoDetect;
+        options.InitMode = Environment.GetEnvironmentVariable("DMMS_INIT_MODE") ?? "auto";
+
         return options;
     }
 
@@ -390,7 +627,11 @@ public static class ConfigurationUtility
         options.RemoteUrl = Environment.GetEnvironmentVariable("DOLT_REMOTE_URL");
         options.CommandTimeoutMs = int.TryParse(Environment.GetEnvironmentVariable("DOLT_COMMAND_TIMEOUT"), out var timeout) ? timeout : 30000;
         options.EnableDebugLogging = bool.TryParse(Environment.GetEnvironmentVariable("DOLT_DEBUG_LOGGING"), out var debug) && debug;
-        
+
+        // PP13-79-C1: Manifest is the single source of truth for Dolt targeting
+        // DOLT_REMOTE_URL is only used for initial manifest creation when no manifest exists
+        options.UseManifest = !bool.TryParse(Environment.GetEnvironmentVariable("DMMS_USE_MANIFEST"), out var useManifest) || useManifest;
+
         return options;
     }
 }

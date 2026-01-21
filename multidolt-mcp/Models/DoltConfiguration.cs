@@ -38,5 +38,14 @@ namespace DMMS.Models
         /// Whether to enable debug logging for Dolt commands
         /// </summary>
         public bool EnableDebugLogging { get; set; } = false;
+
+        // ==================== PP13-79: Manifest-Based Initialization ====================
+
+        /// <summary>
+        /// PP13-79: Whether to read and use .dmms/state.json manifest for initialization.
+        /// When true, DMMS will look for a manifest file and use it to initialize state.
+        /// Environment variable: DMMS_USE_MANIFEST
+        /// </summary>
+        public bool UseManifest { get; set; } = true;
     }
 }

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using DMMS.Models;
 using DMMS.Services;
 using DMMS.Tools;
+using Moq;
 
 namespace DMMS.Testing.IntegrationTests
 {
@@ -78,7 +79,7 @@ namespace DMMS.Testing.IntegrationTests
                 
             // Initialize sync manager and other components
             _syncManager = new SyncManagerV2(
-                _doltCli, 
+                _doltCli,
                 _chromaService,
                 deletionTracker,
                 deletionTracker,
@@ -86,11 +87,17 @@ namespace DMMS.Testing.IntegrationTests
                 loggerFactory.CreateLogger<SyncManagerV2>()
             );
 
+            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            var syncStateChecker = new Mock<ISyncStateChecker>().Object;
+
             _checkoutTool = new DoltCheckoutTool(
                 loggerFactory.CreateLogger<DoltCheckoutTool>(),
                 _doltCli,
                 _syncManager,
-                deletionTracker  // ISyncStateTracker (PP13-69 Phase 3)
+                deletionTracker,  // ISyncStateTracker (PP13-69 Phase 3)
+                manifestService,
+                syncStateChecker
             );
         }
 

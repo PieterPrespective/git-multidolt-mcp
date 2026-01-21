@@ -20,6 +20,8 @@ namespace DMMS.Tools
         private readonly IMergeConflictResolver _conflictResolver;
         private readonly ISyncManagerV2 _syncManager;
         private readonly IConflictAnalyzer _conflictAnalyzer;
+        private readonly IDmmsStateManifest _manifestService;
+        private readonly ISyncStateChecker _syncStateChecker;
 
         /// <summary>
         /// Initializes a new instance of the ExecuteDoltMergeTool class
@@ -29,18 +31,24 @@ namespace DMMS.Tools
         /// <param name="conflictResolver">Service for resolving merge conflicts</param>
         /// <param name="syncManager">Sync manager for merge processing and ChromaDB sync</param>
         /// <param name="conflictAnalyzer">Service for analyzing conflicts during merge</param>
+        /// <param name="manifestService">Manifest service for state tracking</param>
+        /// <param name="syncStateChecker">Sync state checker service</param>
         public ExecuteDoltMergeTool(
             ILogger<ExecuteDoltMergeTool> logger,
             IDoltCli doltCli,
             IMergeConflictResolver conflictResolver,
             ISyncManagerV2 syncManager,
-            IConflictAnalyzer conflictAnalyzer)
+            IConflictAnalyzer conflictAnalyzer,
+            IDmmsStateManifest manifestService,
+            ISyncStateChecker syncStateChecker)
         {
             _logger = logger;
             _doltCli = doltCli;
             _conflictResolver = conflictResolver;
             _syncManager = syncManager;
             _conflictAnalyzer = conflictAnalyzer;
+            _manifestService = manifestService;
+            _syncStateChecker = syncStateChecker;
         }
 
         /// <summary>
@@ -411,6 +419,9 @@ namespace DMMS.Tools
                 var afterCommit = await _doltCli.GetHeadCommitHashAsync();
                 var mergeCommitHash = mergeResult.MergeCommitHash ?? afterCommit;
 
+                // PP13-79-C1: Update manifest after successful merge (NOT during conflicts)
+                await UpdateManifestAfterMergeAsync(mergeCommitHash, target_branch);
+
                 // Build success response
                 var response = new
                 {
@@ -590,6 +601,47 @@ namespace DMMS.Tools
                 "auto" or "autoresolve" or "automatic" => ResolutionType.AutoResolve,
                 _ => null
             };
+        }
+
+        /// <summary>
+        /// PP13-79-C1: Updates the manifest after a successful merge
+        /// Only called after merge completes successfully (not during conflicts)
+        /// </summary>
+        private async Task UpdateManifestAfterMergeAsync(string? commitHash, string? branch)
+        {
+            if (string.IsNullOrEmpty(commitHash))
+            {
+                return;
+            }
+
+            try
+            {
+                ToolLoggingUtility.LogToolInfo(_logger, nameof(ExecuteDoltMergeTool),
+                    $"PP13-79-C1: Updating manifest after successful merge...");
+
+                var projectRoot = await _syncStateChecker.GetProjectRootAsync();
+                if (string.IsNullOrEmpty(projectRoot))
+                {
+                    return;
+                }
+
+                var manifestExists = await _manifestService.ManifestExistsAsync(projectRoot);
+                if (!manifestExists)
+                {
+                    return;
+                }
+
+                await _manifestService.UpdateDoltCommitAsync(projectRoot, commitHash, branch ?? "main");
+                _syncStateChecker.InvalidateCache();
+
+                ToolLoggingUtility.LogToolInfo(_logger, nameof(ExecuteDoltMergeTool),
+                    $"✅ PP13-79-C1: Manifest updated with merge commit {commitHash.Substring(0, 7)}");
+            }
+            catch (Exception ex)
+            {
+                ToolLoggingUtility.LogToolWarning(_logger, nameof(ExecuteDoltMergeTool),
+                    $"⚠️ PP13-79-C1: Failed to update manifest: {ex.Message}");
+            }
         }
     }
 }

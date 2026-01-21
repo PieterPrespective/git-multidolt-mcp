@@ -16,16 +16,26 @@ public class DoltCheckoutTool
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
     private readonly ISyncStateTracker _syncStateTracker;
+    private readonly IDmmsStateManifest _manifestService;
+    private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
     /// Initializes a new instance of the DoltCheckoutTool class
     /// </summary>
-    public DoltCheckoutTool(ILogger<DoltCheckoutTool> logger, IDoltCli doltCli, ISyncManagerV2 syncManager, ISyncStateTracker syncStateTracker)
+    public DoltCheckoutTool(
+        ILogger<DoltCheckoutTool> logger,
+        IDoltCli doltCli,
+        ISyncManagerV2 syncManager,
+        ISyncStateTracker syncStateTracker,
+        IDmmsStateManifest manifestService,
+        ISyncStateChecker syncStateChecker)
     {
         _logger = logger;
         _doltCli = doltCli;
         _syncManager = syncManager;
         _syncStateTracker = syncStateTracker;
+        _manifestService = manifestService;
+        _syncStateChecker = syncStateChecker;
     }
 
     /// <summary>
@@ -276,9 +286,13 @@ public class DoltCheckoutTool
             // Get new state
             var toBranch = await _doltCli.GetCurrentBranchAsync();
             var toCommit = await _doltCli.GetHeadCommitHashAsync();
-            
+
             // PP13-69 Phase 3: Reconstruct sync state after successful checkout
             await ReconstructSyncStateAfterCheckout(toBranch);
+
+            // PP13-79-C1: Update manifest after successful checkout
+            // Note: For checkout to specific commit (detached HEAD), toBranch may be null
+            await UpdateManifestAfterCheckoutAsync(toCommit, toBranch, target, create_branch);
 
             // Post-checkout validation
             var postCheckoutValidation = new
@@ -415,5 +429,81 @@ public class DoltCheckoutTool
             ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltCheckoutTool), $"⚠️ Failed to reconstruct sync state for branch '{targetBranch}': {ex.Message}");
             _logger.LogWarning(ex, "PP13-69 Phase 3: Sync state reconstruction failed, but checkout operation continues");
         }
+    }
+
+    /// <summary>
+    /// PP13-79-C1: Updates the manifest after a successful checkout.
+    /// Handles both branch checkout and commit checkout (detached HEAD).
+    /// </summary>
+    private async Task UpdateManifestAfterCheckoutAsync(string? commitHash, string? branch, string target, bool createdBranch)
+    {
+        if (string.IsNullOrEmpty(commitHash))
+        {
+            return;
+        }
+
+        try
+        {
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCheckoutTool), $"PP13-79-C1: Updating manifest after checkout to {target}...");
+
+            var projectRoot = await _syncStateChecker.GetProjectRootAsync();
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCheckoutTool), "PP13-79-C1: No project root detected, skipping manifest update");
+                return;
+            }
+
+            // Check if manifest exists
+            var manifest = await _manifestService.ReadManifestAsync(projectRoot);
+            if (manifest == null)
+            {
+                ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCheckoutTool), "PP13-79-C1: No manifest found, skipping manifest update");
+                return;
+            }
+
+            // Update the manifest
+            // For detached HEAD (checkout specific commit), branch may be null
+            var branchToSet = branch ?? (IsCommitHash(target) ? null : target);
+
+            var updatedDolt = manifest.Dolt with
+            {
+                CurrentCommit = commitHash,
+                CurrentBranch = branchToSet
+            };
+
+            var updatedManifest = manifest with
+            {
+                Dolt = updatedDolt,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            await _manifestService.WriteManifestAsync(projectRoot, updatedManifest);
+
+            // Invalidate sync state cache
+            _syncStateChecker.InvalidateCache();
+
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCheckoutTool),
+                $"✅ PP13-79-C1: Manifest updated - branch: {branchToSet ?? "(detached)"}, commit: {commitHash.Substring(0, 7)}");
+        }
+        catch (Exception ex)
+        {
+            // Don't fail checkout due to manifest update issues
+            ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltCheckoutTool), $"⚠️ PP13-79-C1: Failed to update manifest after checkout: {ex.Message}");
+            _logger.LogWarning(ex, "PP13-79-C1: Manifest update failed after checkout, but checkout succeeded");
+        }
+    }
+
+    /// <summary>
+    /// Checks if the target looks like a commit hash (hex string of appropriate length)
+    /// </summary>
+    private static bool IsCommitHash(string target)
+    {
+        // Dolt commit hashes are typically 32 characters (full) or 7+ (abbreviated)
+        if (string.IsNullOrEmpty(target) || target.Length < 7)
+        {
+            return false;
+        }
+
+        return target.All(c => char.IsLetterOrDigit(c) && (char.IsDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')));
     }
 }

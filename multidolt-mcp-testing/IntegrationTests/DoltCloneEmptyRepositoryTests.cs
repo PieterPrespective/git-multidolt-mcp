@@ -5,6 +5,7 @@ using DMMS.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
+using Moq;
 
 namespace DMMSTesting.IntegrationTests
 {
@@ -97,9 +98,14 @@ namespace DMMSTesting.IntegrationTests
             var syncLogger = loggerFactory.CreateLogger<SyncManagerV2>();
             _syncManager = new SyncManagerV2(_targetDoltCli, _chromaService, deletionTracker, deletionTracker, targetConfig, syncLogger);
 
+            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            var syncStateChecker = new Mock<ISyncStateChecker>().Object;
+
             // Create clone tool
             var cloneLogger = loggerFactory.CreateLogger<DoltCloneTool>();
-            _cloneTool = new DoltCloneTool(cloneLogger, _targetDoltCli, _syncManager, deletionTracker, targetConfig);
+            _cloneTool = new DoltCloneTool(cloneLogger, _targetDoltCli, _syncManager, deletionTracker, targetConfig,
+                manifestService, syncStateChecker);
         }
 
         [TearDown]
@@ -229,12 +235,18 @@ namespace DMMSTesting.IntegrationTests
             var serverConfig = new ServerConfiguration { DataPath = Path.Combine(_testDirectory, "data") };
             var deletionTracker = new SqliteDeletionTracker(loggerFactory.CreateLogger<SqliteDeletionTracker>(), serverConfig);
             
+            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            var syncStateChecker = new Mock<ISyncStateChecker>().Object;
+
             var invalidCloneTool = new DoltCloneTool(
-                loggerFactory.CreateLogger<DoltCloneTool>(), 
-                invalidDoltCli, 
+                loggerFactory.CreateLogger<DoltCloneTool>(),
+                invalidDoltCli,
                 _syncManager,
                 deletionTracker,
-                invalidConfig);
+                invalidConfig,
+                manifestService,
+                syncStateChecker);
 
             // Act: Attempt to clone with missing executable
             _logger.LogInformation("🎯 ACT: Attempting clone with missing dolt executable");

@@ -94,19 +94,27 @@ namespace DMMSTesting.IntegrationTests
                 _loggerFactory.CreateLogger<SyncManagerV2>()
             );
 
+            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            var syncStateChecker = new Mock<ISyncStateChecker>().Object;
+
             // Create tool instances with PP13-69 Phase 3 dependencies
             _checkoutTool = new DoltCheckoutTool(
                 _loggerFactory.CreateLogger<DoltCheckoutTool>(),
                 _doltCli,
                 _syncManager,
-                _syncStateTracker
+                _syncStateTracker,
+                manifestService,
+                syncStateChecker
             );
 
             _commitTool = new DoltCommitTool(
                 _loggerFactory.CreateLogger<DoltCommitTool>(),
                 _doltCli,
                 _syncManager,
-                _syncStateTracker
+                _syncStateTracker,
+                manifestService,
+                syncStateChecker
             );
 
             _cloneTool = new DoltCloneTool(
@@ -114,7 +122,9 @@ namespace DMMSTesting.IntegrationTests
                 _doltCli,
                 _syncManager,
                 _syncStateTracker,
-                Options.Create(_doltConfig)
+                Options.Create(_doltConfig),
+                manifestService,
+                syncStateChecker
             );
 
             _logger.LogInformation("✅ PP13-69 Phase 3 test environment initialized");
@@ -263,11 +273,17 @@ namespace DMMSTesting.IntegrationTests
                 _loggerFactory.CreateLogger<SyncManagerV2>()
             );
 
+            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+            var manifestServiceForCommit = new Mock<IDmmsStateManifest>().Object;
+            var syncStateCheckerForCommit = new Mock<ISyncStateChecker>().Object;
+
             _commitTool = new DoltCommitTool(
                 _loggerFactory.CreateLogger<DoltCommitTool>(),
                 _doltCli,
                 _syncManager,
-                _syncStateTracker
+                _syncStateTracker,
+                manifestServiceForCommit,
+                syncStateCheckerForCommit
             );
 
             // Create initial sync state

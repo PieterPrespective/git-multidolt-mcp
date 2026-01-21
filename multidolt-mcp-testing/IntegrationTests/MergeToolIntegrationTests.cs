@@ -6,6 +6,7 @@ using DMMS.Models;
 using DMMS.Services;
 using DMMS.Tools;
 using System.Text.Json;
+using Moq;
 
 namespace DMMS.Testing.IntegrationTests
 {
@@ -89,8 +90,13 @@ namespace DMMS.Testing.IntegrationTests
             _conflictAnalyzer = new ConflictAnalyzer(_doltCli, conflictAnalyzerLogger);
             _conflictResolver = new MergeConflictResolver(_doltCli, conflictResolverLogger);
 
+            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            var syncStateChecker = new Mock<ISyncStateChecker>().Object;
+
             _previewTool = new PreviewDoltMergeTool(previewToolLogger, _doltCli, _conflictAnalyzer, _syncManager);
-            _executeTool = new ExecuteDoltMergeTool(executeToolLogger, _doltCli, _conflictResolver, _syncManager, _conflictAnalyzer);
+            _executeTool = new ExecuteDoltMergeTool(executeToolLogger, _doltCli, _conflictResolver, _syncManager, _conflictAnalyzer,
+                manifestService, syncStateChecker);
 
             // Initialize the deletion tracker database schema
             await _deletionTracker.InitializeAsync(_tempRepoPath);

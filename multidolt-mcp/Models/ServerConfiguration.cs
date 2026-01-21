@@ -54,4 +54,31 @@ public class ServerConfiguration
     /// General data directory path for DMMS data files (deletion tracking, etc.)
     /// </summary>
     public string DataPath { get; set; } = "./data";
+
+    // ==================== PP13-79: Project Root Detection ====================
+
+    /// <summary>
+    /// PP13-79: Explicit project root path.
+    /// If specified, this path is used instead of auto-detection.
+    /// Environment variable: DMMS_PROJECT_ROOT
+    /// </summary>
+    public string? ProjectRoot { get; set; }
+
+    /// <summary>
+    /// PP13-79: Whether to automatically detect the project root from Git repository.
+    /// When true, DMMS will search up the directory tree for a Git repository root.
+    /// Environment variable: DMMS_AUTO_DETECT_PROJECT_ROOT
+    /// </summary>
+    public bool AutoDetectProjectRoot { get; set; } = true;
+
+    /// <summary>
+    /// PP13-79: DMMS initialization mode on startup.
+    /// Values: auto, prompt, manual, disabled
+    /// - auto: Automatically sync on startup if manifest differs from local state
+    /// - prompt: Ask user before syncing on startup (not applicable in MCP context)
+    /// - manual: Only sync when explicitly requested via tools
+    /// - disabled: Never auto-sync; use local state only
+    /// Environment variable: DMMS_INIT_MODE
+    /// </summary>
+    public string InitMode { get; set; } = "auto";
 }

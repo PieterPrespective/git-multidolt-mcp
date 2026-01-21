@@ -16,16 +16,26 @@ public class DoltCommitTool
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
     private readonly ISyncStateTracker _syncStateTracker;
+    private readonly IDmmsStateManifest _manifestService;
+    private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
     /// Initializes a new instance of the DoltCommitTool class
     /// </summary>
-    public DoltCommitTool(ILogger<DoltCommitTool> logger, IDoltCli doltCli, ISyncManagerV2 syncManager, ISyncStateTracker syncStateTracker)
+    public DoltCommitTool(
+        ILogger<DoltCommitTool> logger,
+        IDoltCli doltCli,
+        ISyncManagerV2 syncManager,
+        ISyncStateTracker syncStateTracker,
+        IDmmsStateManifest manifestService,
+        ISyncStateChecker syncStateChecker)
     {
         _logger = logger;
         _doltCli = doltCli;
         _syncManager = syncManager;
         _syncStateTracker = syncStateTracker;
+        _manifestService = manifestService;
+        _syncStateChecker = syncStateChecker;
     }
 
     /// <summary>
@@ -128,10 +138,14 @@ public class DoltCommitTool
 
             // Get new commit info
             var newCommitHash = await _doltCli.GetHeadCommitHashAsync();
+            var currentBranch = await _doltCli.GetCurrentBranchAsync();
             var timestamp = DateTime.UtcNow;
-            
+
             // PP13-69 Phase 3: Update sync state in SQLite after successful commit
             await UpdateSyncStateAfterCommit(newCommitHash);
+
+            // PP13-79-C1: Auto-update manifest after successful commit
+            await UpdateManifestAfterCommitAsync(newCommitHash, currentBranch);
 
             var response = new
             {
@@ -242,6 +256,51 @@ public class DoltCommitTool
             // Don't fail commit due to sync state update issues, but log the problem
             ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltCommitTool), $"⚠️ Failed to update sync state after commit: {ex.Message}");
             _logger.LogWarning(ex, "PP13-69 Phase 3: Sync state update failed after commit");
+        }
+    }
+
+    /// <summary>
+    /// PP13-79-C1: Updates the manifest after a successful commit
+    /// </summary>
+    private async Task UpdateManifestAfterCommitAsync(string? commitHash, string? branch)
+    {
+        if (string.IsNullOrEmpty(commitHash))
+        {
+            return;
+        }
+
+        try
+        {
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCommitTool), $"PP13-79-C1: Updating manifest after commit {commitHash.Substring(0, 7)}...");
+
+            var projectRoot = await _syncStateChecker.GetProjectRootAsync();
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCommitTool), "PP13-79-C1: No project root detected, skipping manifest update");
+                return;
+            }
+
+            // Check if manifest exists
+            var manifestExists = await _manifestService.ManifestExistsAsync(projectRoot);
+            if (!manifestExists)
+            {
+                ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCommitTool), "PP13-79-C1: No manifest found, skipping manifest update");
+                return;
+            }
+
+            // Update the manifest with new commit
+            await _manifestService.UpdateDoltCommitAsync(projectRoot, commitHash, branch ?? "main");
+
+            // Invalidate sync state cache
+            _syncStateChecker.InvalidateCache();
+
+            ToolLoggingUtility.LogToolInfo(_logger, nameof(DoltCommitTool), $"✅ PP13-79-C1: Manifest updated with commit {commitHash.Substring(0, 7)}");
+        }
+        catch (Exception ex)
+        {
+            // Don't fail commit due to manifest update issues
+            ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltCommitTool), $"⚠️ PP13-79-C1: Failed to update manifest after commit: {ex.Message}");
+            _logger.LogWarning(ex, "PP13-79-C1: Manifest update failed after commit, but commit succeeded");
         }
     }
 }

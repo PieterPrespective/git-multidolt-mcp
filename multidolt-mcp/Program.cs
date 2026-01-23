@@ -165,7 +165,10 @@ builder.Services
     // PP13-79: Manifest Tools
     .WithTools<InitManifestTool>()
     .WithTools<UpdateManifestTool>()
-    .WithTools<SyncToManifestTool>();
+    .WithTools<SyncToManifestTool>()
+
+    // PP13-81: Manifest Remote Configuration Tool
+    .WithTools<ManifestSetRemoteTool>();
 
 var host = builder.Build();
 
@@ -429,13 +432,25 @@ if (doltConfig.UseManifest)
                             var logger = host.Services.GetService<ILogger<Program>>();
                             if (result.Success)
                             {
-                                logger?.LogInformation("PP13-79: ✓ Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
-                                    result.ActionTaken,
-                                    result.DoltBranch,
-                                    result.DoltCommit?.Substring(0, Math.Min(7, result.DoltCommit?.Length ?? 0)));
+                                // PP13-81: Handle PendingConfiguration specially
+                                if (result.ActionTaken == InitializationAction.PendingConfiguration)
+                                {
+                                    logger?.LogWarning("PP13-81: ⚠ No Dolt repository and no remote URL configured.");
+                                    logger?.LogWarning("PP13-81: Use one of the following to configure:");
+                                    logger?.LogWarning("PP13-81:   - DoltInit: Create a new local repository");
+                                    logger?.LogWarning("PP13-81:   - DoltClone: Clone from a remote repository");
+                                    logger?.LogWarning("PP13-81:   - ManifestSetRemote: Set remote URL, then use DoltClone");
+                                }
+                                else
+                                {
+                                    logger?.LogInformation("PP13-79: ✓ Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
+                                        result.ActionTaken,
+                                        result.DoltBranch,
+                                        result.DoltCommit?.Substring(0, Math.Min(7, result.DoltCommit?.Length ?? 0)));
 
-                                // Invalidate sync state cache after successful initialization
-                                syncStateChecker.InvalidateCache();
+                                    // Invalidate sync state cache after successful initialization
+                                    syncStateChecker.InvalidateCache();
+                                }
                             }
                             else
                             {
@@ -525,15 +540,27 @@ if (doltConfig.UseManifest)
                         var logger = host.Services.GetService<ILogger<Program>>();
                         if (result.Success)
                         {
-                            logger?.LogInformation("PP13-79-C1: ✓ Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
-                                result.ActionTaken,
-                                result.DoltBranch,
-                                result.DoltCommit?.Substring(0, Math.Min(7, result.DoltCommit?.Length ?? 0)));
-
-                            // Update manifest with current state after initialization
-                            if (!string.IsNullOrEmpty(result.DoltCommit))
+                            // PP13-81: Handle PendingConfiguration specially
+                            if (result.ActionTaken == InitializationAction.PendingConfiguration)
                             {
-                                await manifestService.UpdateDoltCommitAsync(projectRoot, result.DoltCommit, result.DoltBranch ?? "main");
+                                logger?.LogWarning("PP13-81: ⚠ No Dolt repository and no remote URL configured.");
+                                logger?.LogWarning("PP13-81: Use one of the following to configure:");
+                                logger?.LogWarning("PP13-81:   - DoltInit: Create a new local repository");
+                                logger?.LogWarning("PP13-81:   - DoltClone: Clone from a remote repository");
+                                logger?.LogWarning("PP13-81:   - ManifestSetRemote: Set remote URL, then use DoltClone");
+                            }
+                            else
+                            {
+                                logger?.LogInformation("PP13-79-C1: ✓ Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
+                                    result.ActionTaken,
+                                    result.DoltBranch,
+                                    result.DoltCommit?.Substring(0, Math.Min(7, result.DoltCommit?.Length ?? 0)));
+
+                                // Update manifest with current state after initialization
+                                if (!string.IsNullOrEmpty(result.DoltCommit))
+                                {
+                                    await manifestService.UpdateDoltCommitAsync(projectRoot, result.DoltCommit, result.DoltBranch ?? "main");
+                                }
                             }
                         }
                         else

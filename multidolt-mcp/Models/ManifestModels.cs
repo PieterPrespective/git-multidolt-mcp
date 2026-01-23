@@ -262,7 +262,13 @@ public enum InitializationAction
     /// <summary>
     /// Initialization failed
     /// </summary>
-    Failed
+    Failed,
+
+    /// <summary>
+    /// PP13-81: No remote URL configured and no local repo exists.
+    /// Waiting for user to configure remote via ManifestSetRemote or DoltClone.
+    /// </summary>
+    PendingConfiguration
 }
 
 /// <summary>

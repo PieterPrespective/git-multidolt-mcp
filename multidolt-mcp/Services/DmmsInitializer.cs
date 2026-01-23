@@ -78,21 +78,16 @@ public class DmmsInitializer : IDmmsInitializer
             }
             else if (!repoExists)
             {
-                // No remote and no local repo - initialize empty
-                _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] No remote URL configured, initializing empty Dolt repo");
+                // PP13-81: No remote and no local repo - don't auto-initialize empty repo
+                // Instead, return PendingConfiguration and let user configure via ManifestSetRemote or DoltClone
+                _logger.LogWarning("[DmmsInitializer.InitializeFromManifestAsync] PP13-81: No Dolt repository found and no remote URL configured.");
+                _logger.LogWarning("[DmmsInitializer.InitializeFromManifestAsync] Use DoltInit to create a local repo, DoltClone to clone from remote, or ManifestSetRemote to configure remote URL.");
 
-                var initResult = await _doltCli.InitAsync();
-
-                if (!initResult.Success)
+                return new InitializationResult
                 {
-                    _logger.LogError("[DmmsInitializer.InitializeFromManifestAsync] Failed to initialize Dolt repo: {Error}", initResult.Error);
-                    return new InitializationResult
-                    {
-                        Success = false,
-                        ActionTaken = InitializationAction.Failed,
-                        ErrorMessage = $"Failed to initialize Dolt repo: {initResult.Error}"
-                    };
-                }
+                    Success = true,  // Not a failure - just pending configuration
+                    ActionTaken = InitializationAction.PendingConfiguration
+                };
             }
 
             // Step 2: Fetch latest from remote if configured

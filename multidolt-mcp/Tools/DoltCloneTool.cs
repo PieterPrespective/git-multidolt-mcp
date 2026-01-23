@@ -46,15 +46,16 @@ public class DoltCloneTool
     }
 
     /// <summary>
-    /// Clone an existing Dolt repository from DoltHub or another remote. This downloads the repository and populates the local ChromaDB with the documents from the specified branch/commit
+    /// Clone an existing Dolt repository from DoltHub or another remote. This downloads the repository and populates the local ChromaDB with the documents from the specified branch/commit.
+    /// PP13-81: Added force parameter to overwrite existing empty repositories.
     /// </summary>
     [McpServerTool]
-    [Description("Clone an existing Dolt repository from DoltHub or another remote. This downloads the repository and populates the local ChromaDB with the documents from the specified branch/commit.")]
-    public virtual async Task<object> DoltClone(string remote_url, string? branch = null, string? commit = null)
+    [Description("Clone an existing Dolt repository from DoltHub or another remote. This downloads the repository and populates the local ChromaDB with the documents from the specified branch/commit. Use force=true to overwrite an existing empty repository.")]
+    public virtual async Task<object> DoltClone(string remote_url, string? branch = null, string? commit = null, bool force = false)
     {
         const string toolName = nameof(DoltCloneTool);
         const string methodName = nameof(DoltClone);
-        ToolLoggingUtility.LogToolStart(_logger, toolName, methodName, $"remote_url: {remote_url}, branch: {branch}, commit: {commit}");
+        ToolLoggingUtility.LogToolStart(_logger, toolName, methodName, $"remote_url: {remote_url}, branch: {branch}, commit: {commit}, force: {force}");
 
         try
         {
@@ -88,13 +89,52 @@ public class DoltCloneTool
             var isInitialized = await _doltCli.IsInitializedAsync();
             if (isInitialized)
             {
-                ToolLoggingUtility.LogToolFailure(_logger, toolName, methodName, "Repository already exists. Use dolt_reset or manual cleanup.");
-                return new
+                // PP13-81: Check if force option is set
+                if (force)
                 {
-                    success = false,
-                    error = "ALREADY_INITIALIZED",
-                    message = "Repository already exists. Use dolt_reset or manual cleanup."
-                };
+                    // Check if repo is truly empty (safe to overwrite)
+                    var isEmpty = await IsRepositoryEmptyAsync();
+
+                    if (isEmpty)
+                    {
+                        _logger.LogInformation("[DoltCloneTool.DoltClone] PP13-81: Force clone requested on empty repository, cleaning up existing repo");
+                        await CleanupExistingRepositoryAsync();
+                        _logger.LogInformation("[DoltCloneTool.DoltClone] PP13-81: Existing repository cleaned up, proceeding with clone");
+                    }
+                    else
+                    {
+                        // Has data - require explicit reset first
+                        ToolLoggingUtility.LogToolFailure(_logger, toolName, methodName, "Repository contains data. Use dolt_reset to clear first, or backup your data.");
+                        return new
+                        {
+                            success = false,
+                            error = "FORCE_REQUIRES_EMPTY",
+                            message = "Repository contains data. Force clone only works on empty repositories. Use dolt_reset to clear first, or backup your data.",
+                            has_data = true,
+                            suggestion = "Call dolt_reset to clear the repository, then retry DoltClone"
+                        };
+                    }
+                }
+                else
+                {
+                    // Provide helpful error with suggestions
+                    var isEmpty = await IsRepositoryEmptyAsync();
+                    ToolLoggingUtility.LogToolFailure(_logger, toolName, methodName,
+                        isEmpty ? "Empty repository exists. Use force=true to overwrite." : "Repository already exists with data.");
+
+                    return new
+                    {
+                        success = false,
+                        error = "ALREADY_INITIALIZED",
+                        message = isEmpty
+                            ? "Empty repository exists. Use force=true to overwrite, or dolt_reset to clear."
+                            : "Repository already exists with data. Use dolt_reset to clear first.",
+                        is_empty = isEmpty,
+                        suggestion = isEmpty
+                            ? "Retry with force=true to overwrite the empty repository"
+                            : "Use dolt_reset to clear the repository, then retry DoltClone"
+                    };
+                }
             }
 
             // Format the URL properly based on the input format
@@ -1429,6 +1469,123 @@ INSERT INTO sync_operations (
         catch (Exception ex)
         {
             ToolLoggingUtility.LogToolWarning(_logger, nameof(DoltCloneTool), $"⚠️ PP13-79-C1: Failed to create/update manifest: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// PP13-81: Checks if the existing Dolt repository is empty (no meaningful data).
+    /// An empty repo has:
+    /// - No commits beyond the initial auto-commit (or no commits at all)
+    /// - No tables with data (or no tables)
+    /// - No remote configured
+    /// </summary>
+    /// <returns>True if the repository is empty and safe to overwrite</returns>
+    private async Task<bool> IsRepositoryEmptyAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[DoltCloneTool.IsRepositoryEmptyAsync] PP13-81: Checking if repository is empty...");
+
+            // Check 1: Count commits
+            var commits = await _doltCli.GetLogAsync(5);
+            var commitList = commits?.ToList() ?? new List<CommitInfo>();
+
+            _logger.LogDebug("[DoltCloneTool.IsRepositoryEmptyAsync] Found {Count} commits", commitList.Count);
+
+            // If more than 3 commits, likely has user data
+            // (init + schema setup can create 2-3 commits)
+            if (commitList.Count > 3)
+            {
+                _logger.LogDebug("[DoltCloneTool.IsRepositoryEmptyAsync] Too many commits ({Count}), repository is not empty", commitList.Count);
+                return false;
+            }
+
+            // Check 2: Look for documents table with data
+            try
+            {
+                var docCount = await _doltCli.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM documents");
+                if (docCount > 0)
+                {
+                    _logger.LogDebug("[DoltCloneTool.IsRepositoryEmptyAsync] Documents table has {Count} documents, repository is not empty", docCount);
+                    return false;
+                }
+            }
+            catch
+            {
+                // No documents table = still potentially empty
+                _logger.LogDebug("[DoltCloneTool.IsRepositoryEmptyAsync] No documents table found");
+            }
+
+            // Check 3: Look for any user tables (non-schema tables)
+            var tables = await _doltCli.QueryAsync<dynamic>("SHOW TABLES");
+            var tableList = tables?.ToList() ?? new List<dynamic>();
+
+            // Schema tables don't count as data
+            var userTables = tableList.Where(t =>
+            {
+                var name = GetTableNameFromResult(t);
+                return name != null &&
+                       !name.StartsWith("__") &&  // Internal tables
+                       name != "collections" &&    // Schema tables
+                       name != "documents" &&
+                       name != "chroma_sync_state" &&
+                       name != "document_sync_log" &&
+                       name != "local_changes" &&
+                       name != "sync_operations";
+            }).ToList();
+
+            if (userTables.Count > 0)
+            {
+                _logger.LogDebug("[DoltCloneTool.IsRepositoryEmptyAsync] Found {Count} user tables, repository is not empty", userTables.Count);
+                return false;
+            }
+
+            _logger.LogDebug("[DoltCloneTool.IsRepositoryEmptyAsync] Repository is empty (safe to overwrite)");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // If we can't determine, assume not empty (safer)
+            _logger.LogWarning(ex, "[DoltCloneTool.IsRepositoryEmptyAsync] Error checking repository state, assuming not empty for safety");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// PP13-81: Cleans up an existing Dolt repository for fresh clone.
+    /// Removes the .dolt directory with retry logic for file locking.
+    /// </summary>
+    private async Task CleanupExistingRepositoryAsync()
+    {
+        _logger.LogInformation("[DoltCloneTool.CleanupExistingRepositoryAsync] PP13-81: Cleaning up existing repository at: {Path}", _repositoryPath);
+
+        var doltDir = Path.Combine(_repositoryPath, ".dolt");
+
+        if (Directory.Exists(doltDir))
+        {
+            // Retry logic for file locking
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                try
+                {
+                    Directory.Delete(doltDir, recursive: true);
+                    _logger.LogInformation("[DoltCloneTool.CleanupExistingRepositoryAsync] ✓ Successfully removed .dolt directory");
+                    return;
+                }
+                catch (IOException ioEx) when (attempt < 4)
+                {
+                    var delayMs = 100 * (int)Math.Pow(2, attempt);
+                    _logger.LogDebug("[DoltCloneTool.CleanupExistingRepositoryAsync] Attempt {Attempt}: File locked, waiting {Delay}ms: {Error}",
+                        attempt + 1, delayMs, ioEx.Message);
+                    await Task.Delay(delayMs);
+                }
+            }
+
+            _logger.LogWarning("[DoltCloneTool.CleanupExistingRepositoryAsync] ⚠ Could not remove .dolt directory after 5 attempts");
+        }
+        else
+        {
+            _logger.LogDebug("[DoltCloneTool.CleanupExistingRepositoryAsync] No .dolt directory to clean up");
         }
     }
 }

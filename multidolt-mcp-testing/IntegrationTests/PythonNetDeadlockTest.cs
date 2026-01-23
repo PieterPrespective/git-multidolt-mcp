@@ -1,10 +1,10 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// Minimal reproducible test for Python.NET ChromaDB deadlock issue

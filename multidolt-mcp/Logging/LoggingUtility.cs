@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Logging;
+namespace Embranch.Logging;
 
 /// <summary>
 /// Utility class for logging configuration and management

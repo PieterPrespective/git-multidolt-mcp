@@ -1,5 +1,5 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
@@ -8,7 +8,7 @@ using NUnit.Framework.Constraints;
 using System.IO.Compression;
 using System.Timers;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// Integration tests for ChromaDB ↔ Dolt synchronization
@@ -60,7 +60,7 @@ public class ChromaDoltSyncIntegrationTests
         var solutionRoot = currentDirectory;
 
         // Walk up the directory tree to find the solution root
-        while (solutionRoot != null && !File.Exists(Path.Combine(solutionRoot, "DMMS.sln")))
+        while (solutionRoot != null && !File.Exists(Path.Combine(solutionRoot, "Embranch.sln")))
         {
             var parent = Directory.GetParent(solutionRoot);
             solutionRoot = parent?.FullName;
@@ -68,7 +68,7 @@ public class ChromaDoltSyncIntegrationTests
 
         if (solutionRoot == null)
         {
-            throw new DirectoryNotFoundException("Could not find solution root directory containing DMMS.sln");
+            throw new DirectoryNotFoundException("Could not find solution root directory containing Embranch.sln");
         }
 
         return solutionRoot;

@@ -1,9 +1,9 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using NUnit.Framework;
 
-namespace DMMSTesting.Services
+namespace EmbranchTesting.Services
 {
     /// <summary>
     /// Tests for PushResultAnalyzer utility class that analyzes dolt push command output

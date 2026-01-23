@@ -1,11 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
-using DMMS.Tools;
-using DMMSTesting.Utilities;
+using Embranch.Models;
+using Embranch.Tools;
+using EmbranchTesting.Utilities;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// Integration tests for the DMMS MCP server

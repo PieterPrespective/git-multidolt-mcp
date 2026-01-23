@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
-namespace DMMSTesting;
+namespace EmbranchTesting;
 
 /// <summary>
 /// Logger that writes directly to a file, ensuring all logs are captured during tests

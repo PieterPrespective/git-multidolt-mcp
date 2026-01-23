@@ -40,13 +40,13 @@ This guide helps you diagnose and resolve common issues with the VM RAG MCP Serv
    Check: %APPDATA%\Claude\claude_desktop_config.json
    ```
    - **Invalid JSON:** Use a JSON validator to check syntax
-   - **Wrong path:** Ensure path to `DMMS.exe` is correct with double backslashes
+   - **Wrong path:** Ensure path to `Embranch.exe` is correct with double backslashes
    - **Missing quotes:** All string values must be in quotes
 
 2. **File Permissions**
    ```bash
    # Test if you can run the executable directly
-   "C:\Program Files\VM-RAG-MCP\DMMS.exe" --help
+   "C:\Program Files\VM-RAG-MCP\Embranch.exe" --help
    ```
    - **Access denied:** Run Claude as administrator or fix file permissions
    - **File not found:** Verify the executable exists at the specified path

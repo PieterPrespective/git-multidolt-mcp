@@ -1,8 +1,8 @@
 using NUnit.Framework;
-using DMMS.Models;
+using Embranch.Models;
 using System.Text.Json;
 
-namespace DMMS.Testing.UnitTests
+namespace EmbranchTesting.UnitTests
 {
     /// <summary>
     /// Unit tests for ImportFilter and related model parsing.

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Implementation of document ID resolution for chunk-aware operations.

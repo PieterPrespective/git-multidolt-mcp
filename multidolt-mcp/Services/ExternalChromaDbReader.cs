@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 using Python.Runtime;
 using System.Collections.Concurrent;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service for reading from external ChromaDB databases (read-only access).

@@ -1,4 +1,4 @@
-namespace DMMS.Models
+namespace Embranch.Models
 {
     // ==================== Result Types ====================
 

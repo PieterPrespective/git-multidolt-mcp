@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace DMMS.Utilities
+namespace Embranch.Utilities
 {
     /// <summary>
     /// Utility class for wildcard pattern matching.

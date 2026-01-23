@@ -5,10 +5,10 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>DMMS</AssemblyName>
-    <RootNamespace>DMMS</RootNamespace>
+    <AssemblyName>Embranch</AssemblyName>
+    <RootNamespace>Embranch</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\DMMS.xml</DocumentationFile>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\Embranch.xml</DocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
@@ -34,7 +34,7 @@
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
     
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
-      <_Parameter1>DMMSTesting</_Parameter1>
+      <_Parameter1>EmbranchTesting</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 

@@ -23,7 +23,7 @@ Before installing the VM RAG MCP Server, ensure you have the following installed
 
 1. Download the latest VM RAG MCP Server release from the releases page
 2. Extract the ZIP file to a location of your choice (e.g., `C:\Program Files\VM-RAG-MCP`)
-3. Note the full path to `DMMS.exe` for configuration
+3. Note the full path to `Embranch.exe` for configuration
 
 ### Option 2: Building from Source
 
@@ -35,12 +35,12 @@ Before installing the VM RAG MCP Server, ensure you have the following installed
 
 2. Build the project:
    ```bash
-   dotnet build multidolt-mcp/DMMS.csproj -c Release
+   dotnet build multidolt-mcp/Embranch.csproj -c Release
    ```
 
 3. The executable will be located at:
    ```
-   multidolt-mcp\bin\Release\net9.0\DMMS.exe
+   multidolt-mcp\bin\Release\net9.0\Embranch.exe
    ```
 
 ## Verifying Installation
@@ -76,7 +76,7 @@ pip install chromadb
 Open a Command Prompt or PowerShell and run:
 
 ```bash
-"C:\Path\To\DMMS.exe" --help
+"C:\Path\To\Embranch.exe" --help
 ```
 
 You should see help information for the VM RAG MCP Server.

@@ -1,6 +1,6 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// PP13-79-C1: Interface for checking sync state between local Dolt and manifest.

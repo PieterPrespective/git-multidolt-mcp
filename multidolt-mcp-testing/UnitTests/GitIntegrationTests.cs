@@ -1,9 +1,9 @@
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Moq;
-using DMMS.Services;
+using Embranch.Services;
 
-namespace DMMSTesting.UnitTests;
+namespace EmbranchTesting.UnitTests;
 
 /// <summary>
 /// PP13-79: Unit tests for GitIntegration service

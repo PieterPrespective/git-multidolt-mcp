@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using DMMS.Models;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service implementation for analyzing merge conflicts

@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Python.Runtime;
 using System.Text.Json;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// Helper class to handle ChromaDB version compatibility issues

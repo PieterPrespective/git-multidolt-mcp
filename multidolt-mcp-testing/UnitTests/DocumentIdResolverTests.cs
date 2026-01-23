@@ -1,11 +1,11 @@
-using DMMS.Services;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Moq;
 
-namespace DMMS.Testing.UnitTests
+namespace EmbranchTesting.UnitTests
 {
     /// <summary>
     /// Unit tests for DocumentIdResolver functionality

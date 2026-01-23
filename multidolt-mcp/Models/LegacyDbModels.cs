@@ -1,4 +1,4 @@
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Result of checking a ChromaDB database for legacy version compatibility issues.

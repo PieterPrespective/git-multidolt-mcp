@@ -6,10 +6,10 @@
     <IsTestProject>true</IsTestProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>DMMSTesting</AssemblyName>
-    <RootNamespace>DMMSTesting</RootNamespace>
+    <AssemblyName>EmbranchTesting</AssemblyName>
+    <RootNamespace>EmbranchTesting</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\DMMSTesting.xml</DocumentationFile>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\EmbranchTesting.xml</DocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
@@ -32,7 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\multidolt-mcp\DMMS.csproj" />
+    <ProjectReference Include="..\multidolt-mcp\Embranch.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Interface for analyzing import operations and detecting potential conflicts.

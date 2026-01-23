@@ -2,11 +2,11 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
 /// MCP tool that deletes a collection from ChromaDB

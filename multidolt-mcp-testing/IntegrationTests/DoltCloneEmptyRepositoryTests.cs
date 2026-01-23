@@ -1,13 +1,13 @@
 using System.Text.Json;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 using Moq;
 
-namespace DMMSTesting.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests for DoltCloneTool specifically testing empty repository handling.
@@ -98,8 +98,8 @@ namespace DMMSTesting.IntegrationTests
             var syncLogger = loggerFactory.CreateLogger<SyncManagerV2>();
             _syncManager = new SyncManagerV2(_targetDoltCli, _chromaService, deletionTracker, deletionTracker, targetConfig, syncLogger);
 
-            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IEmbranchStateManifest>().Object;
             var syncStateChecker = new Mock<ISyncStateChecker>().Object;
 
             // Create clone tool
@@ -235,8 +235,8 @@ namespace DMMSTesting.IntegrationTests
             var serverConfig = new ServerConfiguration { DataPath = Path.Combine(_testDirectory, "data") };
             var deletionTracker = new SqliteDeletionTracker(loggerFactory.CreateLogger<SqliteDeletionTracker>(), serverConfig);
             
-            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IEmbranchStateManifest>().Object;
             var syncStateChecker = new Mock<ISyncStateChecker>().Object;
 
             var invalidCloneTool = new DoltCloneTool(

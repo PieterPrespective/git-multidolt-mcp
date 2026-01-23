@@ -1,6 +1,6 @@
-using DMMSTesting.Utilities;
+using EmbranchTesting.Utilities;
 
-namespace DMMSTesting.Utilities;
+namespace EmbranchTesting.Utilities;
 
 /// <summary>
 /// Unit tests for TestUtilities timeout functionality

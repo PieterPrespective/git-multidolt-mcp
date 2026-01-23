@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Diagnostic service for checking and reporting sync system state.

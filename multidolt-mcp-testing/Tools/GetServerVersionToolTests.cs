@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using DMMS.Models;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Tools;
 using System.Dynamic;
 
-namespace DMMSTesting.Tools;
+namespace EmbranchTesting.Tools;
 
 /// <summary>
 /// Unit tests for the GetServerVersionTool class
@@ -67,7 +67,7 @@ public class GetServerVersionToolTests
         Assert.That(version.assemblyVersion, Is.Not.Null.Or.Empty, "Assembly version should be present");
         Assert.That(version.fileVersion, Is.Not.Null.Or.Empty, "File version should be present");
         Assert.That(version.loggingEnabled, Is.Not.Null, "Logging enabled flag should be present");
-        Assert.That(version.serverType, Is.EqualTo("DMMS - Dolt Multi-Database MCP Server"));
+        Assert.That(version.serverType, Is.EqualTo("Embranch MCP Server"));
     }
 
     /// <summary>

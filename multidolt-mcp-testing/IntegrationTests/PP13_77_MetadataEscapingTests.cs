@@ -7,11 +7,11 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests for PP13-77: SQL JSON Escaping for Metadata with Special Characters.
@@ -140,7 +140,7 @@ namespace DMMS.Testing.IntegrationTests
             // Create a ChromaDocument with Windows path in metadata
             var metadata = new Dictionary<string, object>
             {
-                ["import_source"] = @"C:\Users\piete\AppData\Local\Temp\DMMS_LegacyMigration\test_collection",
+                ["import_source"] = @"C:\Users\piete\AppData\Local\Temp\Embranch_LegacyMigration\test_collection",
                 ["import_timestamp"] = "2026-01-16T13:05:50.4134547Z",
                 ["is_local_change"] = true
             };
@@ -302,7 +302,7 @@ namespace DMMS.Testing.IntegrationTests
             // Simulate the exact metadata from the bug report
             var importMetadata = new Dictionary<string, object>
             {
-                ["import_source"] = @"C:\Users\piete\AppData\Local\Temp\DMMS_LegacyMigration\feat-design-planning_27e44c08b6534f57ad9f059c75ec4261",
+                ["import_source"] = @"C:\Users\piete\AppData\Local\Temp\Embranch_LegacyMigration\feat-design-planning_27e44c08b6534f57ad9f059c75ec4261",
                 ["import_source_collection"] = "SE-409",
                 ["import_timestamp"] = "2026-01-16T13:05:50.4134547Z"
             };
@@ -345,7 +345,7 @@ namespace DMMS.Testing.IntegrationTests
             // Arrange - create metadata like it would come from import
             var metadata = new Dictionary<string, object>
             {
-                ["import_source"] = @"C:\Users\piete\AppData\Local\Temp\DMMS_LegacyMigration\test",
+                ["import_source"] = @"C:\Users\piete\AppData\Local\Temp\Embranch_LegacyMigration\test",
                 ["import_timestamp"] = "2026-01-16T13:05:50.4134547Z"
             };
 

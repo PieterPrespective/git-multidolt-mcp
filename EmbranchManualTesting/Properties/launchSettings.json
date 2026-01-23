@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "DMMSManualTesting": {
+    "EmbranchManualTesting": {
       "commandName": "Project",
       "hotReloadEnabled": false
     }

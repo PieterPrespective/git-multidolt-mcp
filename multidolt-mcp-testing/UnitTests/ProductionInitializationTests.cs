@@ -6,11 +6,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Moq;
 
-namespace DMMS.UnitTests
+namespace Embranch.UnitTests
 {
     /// <summary>
     /// Unit tests for Phase 4: Production Initialization Patterns (PP13-61)

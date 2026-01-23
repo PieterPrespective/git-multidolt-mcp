@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
+using Embranch.Models;
 using Python.Runtime;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service for handling legacy ChromaDB database version compatibility.
@@ -12,7 +12,7 @@ namespace DMMS.Services
     public class LegacyDbMigrator : ILegacyDbMigrator
     {
         private readonly ILogger<LegacyDbMigrator> _logger;
-        private const string TempDirectoryPrefix = "DMMS_LegacyMigration";
+        private const string TempDirectoryPrefix = "Embranch_LegacyMigration";
         private const int MaxCleanupRetries = 5;
         private const int BaseRetryDelayMs = 100;
 

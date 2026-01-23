@@ -4,12 +4,12 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// V2 Sync Manager with bidirectional synchronization between Dolt and ChromaDB.

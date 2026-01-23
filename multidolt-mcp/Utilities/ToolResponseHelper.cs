@@ -1,8 +1,8 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Utilities;
+namespace Embranch.Utilities;
 
 /// <summary>
 /// PP13-79-C1: Helper utility for attaching out-of-sync warnings to tool responses.

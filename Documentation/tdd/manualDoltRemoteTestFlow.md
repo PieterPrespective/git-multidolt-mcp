@@ -1,6 +1,6 @@
 # Manual Dolt Remote Test Flow
 
-This document provides step-by-step terminal commands to manually reproduce the VMRAGTestExisting test flow (Option 4) from DMMSManualTesting. Use this to debug remote operations and verify expected behavior.
+This document provides step-by-step terminal commands to manually reproduce the VMRAGTestExisting test flow (Option 4) from EmbranchManualTesting. Use this to debug remote operations and verify expected behavior.
 
 ## Prerequisites
 

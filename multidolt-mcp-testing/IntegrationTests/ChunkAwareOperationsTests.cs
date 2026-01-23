@@ -1,5 +1,5 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
@@ -10,7 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests for chunk-aware document operations (PP13-69-C8)

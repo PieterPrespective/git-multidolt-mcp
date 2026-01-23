@@ -1,28 +1,28 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
-/// PP13-79: Implementation of DMMS state initialization.
-/// Handles initializing DMMS state based on manifest and configuration,
+/// PP13-79: Implementation of Embranch state initialization.
+/// Handles initializing Embranch state based on manifest and configuration,
 /// coordinating Dolt operations and ChromaDB synchronization.
 /// </summary>
-public class DmmsInitializer : IDmmsInitializer
+public class EmbranchInitializer : IEmbranchInitializer
 {
-    private readonly ILogger<DmmsInitializer> _logger;
+    private readonly ILogger<EmbranchInitializer> _logger;
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly IGitIntegration _gitIntegration;
     private readonly DoltConfiguration _doltConfig;
 
-    public DmmsInitializer(
-        ILogger<DmmsInitializer> logger,
+    public EmbranchInitializer(
+        ILogger<EmbranchInitializer> logger,
         IDoltCli doltCli,
         ISyncManagerV2 syncManager,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         IGitIntegration gitIntegration,
         IOptions<DoltConfiguration> doltConfig)
     {
@@ -37,14 +37,14 @@ public class DmmsInitializer : IDmmsInitializer
     /// <inheritdoc />
     public async Task<InitializationResult> InitializeFromManifestAsync(DmmsManifest manifest, string projectRoot)
     {
-        _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Starting initialization from manifest at: {ProjectRoot}", projectRoot);
+        _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Starting initialization from manifest at: {ProjectRoot}", projectRoot);
 
         try
         {
             // Check initialization mode
             if (manifest.Initialization.Mode == InitializationMode.Disabled)
             {
-                _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Initialization disabled by manifest");
+                _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Initialization disabled by manifest");
                 return new InitializationResult
                 {
                     Success = true,
@@ -58,14 +58,14 @@ public class DmmsInitializer : IDmmsInitializer
             if (!repoExists && !string.IsNullOrEmpty(manifest.Dolt.RemoteUrl))
             {
                 // Clone from remote
-                _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Dolt repo not found, cloning from remote: {RemoteUrl}",
+                _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Dolt repo not found, cloning from remote: {RemoteUrl}",
                     manifest.Dolt.RemoteUrl);
 
                 var cloneResult = await _doltCli.CloneAsync(manifest.Dolt.RemoteUrl);
 
                 if (!cloneResult.Success)
                 {
-                    _logger.LogError("[DmmsInitializer.InitializeFromManifestAsync] Failed to clone from remote: {Error}", cloneResult.Error);
+                    _logger.LogError("[EmbranchInitializer.InitializeFromManifestAsync] Failed to clone from remote: {Error}", cloneResult.Error);
                     return new InitializationResult
                     {
                         Success = false,
@@ -74,14 +74,14 @@ public class DmmsInitializer : IDmmsInitializer
                     };
                 }
 
-                _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Successfully cloned from remote");
+                _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Successfully cloned from remote");
             }
             else if (!repoExists)
             {
                 // PP13-81: No remote and no local repo - don't auto-initialize empty repo
                 // Instead, return PendingConfiguration and let user configure via ManifestSetRemote or DoltClone
-                _logger.LogWarning("[DmmsInitializer.InitializeFromManifestAsync] PP13-81: No Dolt repository found and no remote URL configured.");
-                _logger.LogWarning("[DmmsInitializer.InitializeFromManifestAsync] Use DoltInit to create a local repo, DoltClone to clone from remote, or ManifestSetRemote to configure remote URL.");
+                _logger.LogWarning("[EmbranchInitializer.InitializeFromManifestAsync] PP13-81: No Dolt repository found and no remote URL configured.");
+                _logger.LogWarning("[EmbranchInitializer.InitializeFromManifestAsync] Use DoltInit to create a local repo, DoltClone to clone from remote, or ManifestSetRemote to configure remote URL.");
 
                 return new InitializationResult
                 {
@@ -93,7 +93,7 @@ public class DmmsInitializer : IDmmsInitializer
             // Step 2: Fetch latest from remote if configured
             if (!string.IsNullOrEmpty(manifest.Dolt.RemoteUrl))
             {
-                _logger.LogDebug("[DmmsInitializer.InitializeFromManifestAsync] Fetching from remote");
+                _logger.LogDebug("[EmbranchInitializer.InitializeFromManifestAsync] Fetching from remote");
 
                 try
                 {
@@ -102,7 +102,7 @@ public class DmmsInitializer : IDmmsInitializer
                 catch (Exception ex)
                 {
                     // Log but don't fail - network might be unavailable
-                    _logger.LogWarning(ex, "[DmmsInitializer.InitializeFromManifestAsync] Failed to fetch from remote, continuing with local state");
+                    _logger.LogWarning(ex, "[EmbranchInitializer.InitializeFromManifestAsync] Failed to fetch from remote, continuing with local state");
                 }
             }
 
@@ -114,14 +114,14 @@ public class DmmsInitializer : IDmmsInitializer
             if (!string.IsNullOrEmpty(manifest.Dolt.CurrentCommit))
             {
                 // Checkout specific commit
-                _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Checking out commit: {Commit}",
+                _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Checking out commit: {Commit}",
                     manifest.Dolt.CurrentCommit.Substring(0, Math.Min(7, manifest.Dolt.CurrentCommit.Length)));
 
                 var checkoutResult = await _doltCli.CheckoutAsync(manifest.Dolt.CurrentCommit);
 
                 if (!checkoutResult.Success)
                 {
-                    _logger.LogWarning("[DmmsInitializer.InitializeFromManifestAsync] Failed to checkout commit {Commit}: {Error}. Falling back to branch.",
+                    _logger.LogWarning("[EmbranchInitializer.InitializeFromManifestAsync] Failed to checkout commit {Commit}: {Error}. Falling back to branch.",
                         manifest.Dolt.CurrentCommit.Substring(0, Math.Min(7, manifest.Dolt.CurrentCommit.Length)),
                         checkoutResult.Error);
 
@@ -159,14 +159,14 @@ public class DmmsInitializer : IDmmsInitializer
             else if (!string.IsNullOrEmpty(manifest.Dolt.CurrentBranch))
             {
                 // Checkout specific branch
-                _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Checking out branch: {Branch}",
+                _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Checking out branch: {Branch}",
                     manifest.Dolt.CurrentBranch);
 
                 var checkoutResult = await _doltCli.CheckoutAsync(manifest.Dolt.CurrentBranch);
 
                 if (!checkoutResult.Success)
                 {
-                    _logger.LogWarning("[DmmsInitializer.InitializeFromManifestAsync] Failed to checkout branch {Branch}: {Error}",
+                    _logger.LogWarning("[EmbranchInitializer.InitializeFromManifestAsync] Failed to checkout branch {Branch}: {Error}",
                         manifest.Dolt.CurrentBranch, checkoutResult.Error);
 
                     // Continue with current state
@@ -184,13 +184,13 @@ public class DmmsInitializer : IDmmsInitializer
             }
 
             // Step 4: Sync ChromaDB to match Dolt state
-            _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Syncing ChromaDB to Dolt state");
+            _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Syncing ChromaDB to Dolt state");
 
             var syncResult = await _syncManager.FullSyncAsync(collectionName: null, forceSync: true);
 
             if (!syncResult.Success)
             {
-                _logger.LogError("[DmmsInitializer.InitializeFromManifestAsync] Failed to sync ChromaDB: {Error}", syncResult.ErrorMessage);
+                _logger.LogError("[EmbranchInitializer.InitializeFromManifestAsync] Failed to sync ChromaDB: {Error}", syncResult.ErrorMessage);
                 return new InitializationResult
                 {
                     Success = false,
@@ -203,7 +203,7 @@ public class DmmsInitializer : IDmmsInitializer
             var currentCommit = await _doltCli.GetHeadCommitHashAsync();
             var currentBranch = await _doltCli.GetCurrentBranchAsync();
 
-            _logger.LogInformation("[DmmsInitializer.InitializeFromManifestAsync] Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
+            _logger.LogInformation("[EmbranchInitializer.InitializeFromManifestAsync] Initialization complete. Action: {Action}, Branch: {Branch}, Commit: {Commit}",
                 action, currentBranch, currentCommit?.Substring(0, Math.Min(7, currentCommit?.Length ?? 0)));
 
             return new InitializationResult
@@ -217,7 +217,7 @@ public class DmmsInitializer : IDmmsInitializer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[DmmsInitializer.InitializeFromManifestAsync] Initialization failed with exception");
+            _logger.LogError(ex, "[EmbranchInitializer.InitializeFromManifestAsync] Initialization failed with exception");
             return new InitializationResult
             {
                 Success = false,
@@ -230,7 +230,7 @@ public class DmmsInitializer : IDmmsInitializer
     /// <inheritdoc />
     public async Task<InitializationCheck> CheckInitializationNeededAsync(DmmsManifest manifest)
     {
-        _logger.LogDebug("[DmmsInitializer.CheckInitializationNeededAsync] Checking if initialization is needed");
+        _logger.LogDebug("[EmbranchInitializer.CheckInitializationNeededAsync] Checking if initialization is needed");
 
         try
         {
@@ -300,7 +300,7 @@ public class DmmsInitializer : IDmmsInitializer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[DmmsInitializer.CheckInitializationNeededAsync] Error checking initialization state");
+            _logger.LogWarning(ex, "[EmbranchInitializer.CheckInitializationNeededAsync] Error checking initialization state");
             return new InitializationCheck
             {
                 NeedsInitialization = true,
@@ -312,7 +312,7 @@ public class DmmsInitializer : IDmmsInitializer
     /// <inheritdoc />
     public async Task<SyncResultV2> SyncToCommitAsync(string doltCommit, string? branch = null)
     {
-        _logger.LogInformation("[DmmsInitializer.SyncToCommitAsync] Syncing to commit: {Commit}",
+        _logger.LogInformation("[EmbranchInitializer.SyncToCommitAsync] Syncing to commit: {Commit}",
             doltCommit.Substring(0, Math.Min(7, doltCommit.Length)));
 
         try
@@ -336,7 +336,7 @@ public class DmmsInitializer : IDmmsInitializer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[DmmsInitializer.SyncToCommitAsync] Failed to sync to commit");
+            _logger.LogError(ex, "[EmbranchInitializer.SyncToCommitAsync] Failed to sync to commit");
             return new SyncResultV2
             {
                 Status = SyncStatusV2.Failed,
@@ -348,7 +348,7 @@ public class DmmsInitializer : IDmmsInitializer
     /// <inheritdoc />
     public async Task<SyncResultV2> SyncToBranchAsync(string branchName)
     {
-        _logger.LogInformation("[DmmsInitializer.SyncToBranchAsync] Syncing to branch: {Branch}", branchName);
+        _logger.LogInformation("[EmbranchInitializer.SyncToBranchAsync] Syncing to branch: {Branch}", branchName);
 
         try
         {
@@ -371,7 +371,7 @@ public class DmmsInitializer : IDmmsInitializer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[DmmsInitializer.SyncToBranchAsync] Failed to sync to branch");
+            _logger.LogError(ex, "[EmbranchInitializer.SyncToBranchAsync] Failed to sync to branch");
             return new SyncResultV2
             {
                 Status = SyncStatusV2.Failed,
@@ -381,9 +381,9 @@ public class DmmsInitializer : IDmmsInitializer
     }
 
     /// <inheritdoc />
-    public async Task<DmmsInitializationState> GetCurrentStateAsync()
+    public async Task<EmbranchInitializationState> GetCurrentStateAsync()
     {
-        var state = new DmmsInitializationState();
+        var state = new EmbranchInitializationState();
 
         try
         {
@@ -435,7 +435,7 @@ public class DmmsInitializer : IDmmsInitializer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[DmmsInitializer.GetCurrentStateAsync] Error getting current state");
+            _logger.LogWarning(ex, "[EmbranchInitializer.GetCurrentStateAsync] Error getting current state");
         }
 
         return state;

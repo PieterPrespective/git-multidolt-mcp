@@ -1,4 +1,4 @@
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Exception thrown when Dolt operations fail

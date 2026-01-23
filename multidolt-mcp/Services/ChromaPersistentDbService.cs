@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// Persistent ChromaDB service using Python.NET with chromadb PersistentClient

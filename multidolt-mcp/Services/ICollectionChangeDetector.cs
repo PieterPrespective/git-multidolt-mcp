@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Interface for detecting collection-level changes between ChromaDB and Dolt.

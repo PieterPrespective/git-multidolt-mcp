@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document details the comprehensive ChromaDB integration implemented for the DMMS (Dolt Multi-Database MCP Server), including the resolution of critical Python.NET GIL deadlock issues and automatic database migration capabilities. The implementation provides both persistent and server-mode operation with full compatibility for legacy ChromaDB databases.
+This document details the comprehensive ChromaDB integration implemented for Embranch MCP Server, including the resolution of critical Python.NET GIL deadlock issues and automatic database migration capabilities. The implementation provides both persistent and server-mode operation with full compatibility for legacy ChromaDB databases.
 
 ## Table of Contents
 

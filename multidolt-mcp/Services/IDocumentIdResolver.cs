@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service for resolving document IDs between base IDs and chunk IDs in ChromaDB.

@@ -1,0 +1,30 @@
+﻿ PP13_68_BranchSwitchingWithContentValidation
+   Source: BranchSwitchingIntegrationTests.cs line 952
+   Duration: 8 ms
+
+  Message: 
+    System.InvalidOperationException : Unable to resolve service for type 'Embranch.Services.IEmbranchStateManifest' while attempting to activate 'Embranch.Tools.DoltCheckoutTool'.
+
+  Stack Trace: 
+    CallSiteFactory.CreateArgumentCallSites(ServiceIdentifier serviceIdentifier, Type implementationType, CallSiteChain callSiteChain, ParameterInfo[] parameters, Boolean throwIfCallSiteNotFound)
+    CallSiteFactory.CreateConstructorCallSite(ResultCache lifetime, ServiceIdentifier serviceIdentifier, Type implementationType, CallSiteChain callSiteChain)
+    CallSiteFactory.TryCreateExact(ServiceDescriptor descriptor, ServiceIdentifier serviceIdentifier, CallSiteChain callSiteChain, Int32 slot)
+    CallSiteFactory.CreateCallSite(ServiceIdentifier serviceIdentifier, CallSiteChain callSiteChain)
+    ServiceProvider.CreateServiceAccessor(ServiceIdentifier serviceIdentifier)
+    ServiceProviderServiceExtensions.GetRequiredService(IServiceProvider provider, Type serviceType)
+    ServiceProviderServiceExtensions.GetRequiredService[T](IServiceProvider provider)
+    BranchSwitchingIntegrationTests.Setup() line 111
+    AsyncToSyncAdapter.Await[TResult](TestExecutionContext context, Func`1 invoke)
+    SetUpTearDownItem.RunSetUp(TestExecutionContext context)
+    <>c__DisplayClass1_0.<Execute>b__0()
+    DelegatingTestCommand.RunTestMethodInThreadAbortSafeZone(TestExecutionContext context, Action action)
+
+  Standard Output: 
+    dbug: Embranch.Services.DoltCli[0]
+          [DoltCli] DoltCLI Initialized, setting up repository directory..
+    dbug: Embranch.Services.DoltCli[0]
+          [DoltCli.EnsureRepositoryDirectoryExists] Repository directory already exists: C:\Users\piete\AppData\Local\Temp\BranchSwitchingTests_730ff56d-eed0-4289-9dc6-34bf90c2a592
+    info: Embranch.Services.ChromaDbService[0]
+          Created ChromaPythonService with client ID: ChromaPythonService_20260123_210529_302_df4cee4c
+    Cleanup warning: SQLite Error 1: 'no such table: sync_state'.
+    

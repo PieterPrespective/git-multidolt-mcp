@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.UnitTests
+namespace Embranch.UnitTests
 {
     /// <summary>
     /// Unit tests for ISyncStateTracker functionality in SqliteDeletionTracker

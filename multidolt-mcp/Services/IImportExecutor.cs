@@ -1,11 +1,11 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Interface for executing import operations with conflict resolution.
     /// Provides methods to execute imports from external ChromaDB databases
-    /// into the local DMMS-managed database with full conflict handling.
+    /// into the local Embranch-managed database with full conflict handling.
     /// </summary>
     public interface IImportExecutor
     {

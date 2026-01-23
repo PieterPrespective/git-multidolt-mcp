@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service implementation for analyzing import operations and detecting conflicts.

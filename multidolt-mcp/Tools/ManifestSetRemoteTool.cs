@@ -1,14 +1,14 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
-/// PP13-81: MCP tool to update the remote URL in the DMMS manifest.
+/// PP13-81: MCP tool to update the remote URL in the Embranch manifest.
 /// Allows configuration of remote repository without requiring restart.
 /// This enables recovery from the empty repository initialization scenario.
 /// </summary>
@@ -16,7 +16,7 @@ namespace DMMS.Tools;
 public class ManifestSetRemoteTool
 {
     private readonly ILogger<ManifestSetRemoteTool> _logger;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly ISyncStateChecker _syncStateChecker;
     private readonly IGitIntegration _gitIntegration;
 
@@ -25,7 +25,7 @@ public class ManifestSetRemoteTool
     /// </summary>
     public ManifestSetRemoteTool(
         ILogger<ManifestSetRemoteTool> logger,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         ISyncStateChecker syncStateChecker,
         IGitIntegration gitIntegration)
     {
@@ -36,11 +36,11 @@ public class ManifestSetRemoteTool
     }
 
     /// <summary>
-    /// Update the remote URL in the DMMS manifest. After setting, use DoltClone to clone from the remote.
-    /// This tool enables recovery when DMMS started without a configured remote URL.
+    /// Update the remote URL in the Embranch manifest. After setting, use DoltClone to clone from the remote.
+    /// This tool enables recovery when Embranch started without a configured remote URL.
     /// </summary>
     [McpServerTool]
-    [Description("Update the remote URL in the DMMS manifest. After setting, use DoltClone (with force=true if needed) to clone from the remote. This enables configuration of remote repository after initial startup.")]
+    [Description("Update the remote URL in the Embranch manifest. After setting, use DoltClone (with force=true if needed) to clone from the remote. This enables configuration of remote repository after initial startup.")]
     public virtual async Task<object> ManifestSetRemote(
         string remote_url,
         string? default_branch = null,

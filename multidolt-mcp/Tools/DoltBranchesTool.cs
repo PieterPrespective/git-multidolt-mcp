@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
 /// MCP tool that manages branches in the Dolt repository - supports listing, creating, renaming, and deleting branches

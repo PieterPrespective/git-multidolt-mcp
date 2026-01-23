@@ -1,11 +1,11 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using NUnit.Framework;
 
-namespace DMMSTesting.Services
+namespace EmbranchTesting.Services
 {
     /// <summary>
     /// Unit tests for DoltCli remote parsing functionality.

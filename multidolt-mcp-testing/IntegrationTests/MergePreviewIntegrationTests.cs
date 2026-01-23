@@ -2,13 +2,13 @@ using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 using System.Text.Json;
 using Moq;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests specifically for the enhanced merge preview functionality
@@ -2076,8 +2076,8 @@ namespace DMMS.Testing.IntegrationTests
 
                 // Step 5: Execute merge using ExecuteDoltMergeTool (this should now trigger ChromaDB sync)
                 var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
-                // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-                var manifestService = new Mock<IDmmsStateManifest>().Object;
+                // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+                var manifestService = new Mock<IEmbranchStateManifest>().Object;
                 var syncStateChecker = new Mock<ISyncStateChecker>().Object;
                 var executeTool = new ExecuteDoltMergeTool(
                     loggerFactory.CreateLogger<ExecuteDoltMergeTool>(),
@@ -2219,8 +2219,8 @@ namespace DMMS.Testing.IntegrationTests
 
                 // Execute merge
                 var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
-                // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-                var manifestService2 = new Mock<IDmmsStateManifest>().Object;
+                // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+                var manifestService2 = new Mock<IEmbranchStateManifest>().Object;
                 var syncStateChecker2 = new Mock<ISyncStateChecker>().Object;
                 var executeTool = new ExecuteDoltMergeTool(
                     loggerFactory.CreateLogger<ExecuteDoltMergeTool>(),
@@ -2329,8 +2329,8 @@ namespace DMMS.Testing.IntegrationTests
 
                 // Execute with keep_theirs
                 var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Debug));
-                // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-                var manifestService3 = new Mock<IDmmsStateManifest>().Object;
+                // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+                var manifestService3 = new Mock<IEmbranchStateManifest>().Object;
                 var syncStateChecker3 = new Mock<ISyncStateChecker>().Object;
                 var executeTool = new ExecuteDoltMergeTool(
                     loggerFactory.CreateLogger<ExecuteDoltMergeTool>(),

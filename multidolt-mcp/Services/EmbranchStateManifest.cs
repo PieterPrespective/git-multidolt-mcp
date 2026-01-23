@@ -1,18 +1,18 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
-/// PP13-79: Implementation of DMMS state manifest operations.
+/// PP13-79: Implementation of Embranch state manifest operations.
 /// Manages the .dmms/state.json file that tracks Dolt repository state
 /// and Git-Dolt commit mappings for project synchronization.
 /// </summary>
-public class DmmsStateManifest : IDmmsStateManifest
+public class EmbranchStateManifest : IEmbranchStateManifest
 {
-    private readonly ILogger<DmmsStateManifest> _logger;
+    private readonly ILogger<EmbranchStateManifest> _logger;
     private const string DmmsDirectoryName = ".dmms";
     private const string ManifestFileName = "state.json";
 
@@ -24,7 +24,7 @@ public class DmmsStateManifest : IDmmsStateManifest
         Converters = { new JsonStringEnumConverter() }
     };
 
-    public DmmsStateManifest(ILogger<DmmsStateManifest> logger)
+    public EmbranchStateManifest(ILogger<EmbranchStateManifest> logger)
     {
         _logger = logger;
     }
@@ -38,7 +38,7 @@ public class DmmsStateManifest : IDmmsStateManifest
 
             if (!File.Exists(manifestPath))
             {
-                _logger.LogDebug("[DmmsStateManifest.ReadManifestAsync] Manifest not found at: {Path}", manifestPath);
+                _logger.LogDebug("[EmbranchStateManifest.ReadManifestAsync] Manifest not found at: {Path}", manifestPath);
                 return null;
             }
 
@@ -46,7 +46,7 @@ public class DmmsStateManifest : IDmmsStateManifest
 
             if (string.IsNullOrWhiteSpace(json))
             {
-                _logger.LogWarning("[DmmsStateManifest.ReadManifestAsync] Manifest file is empty at: {Path}", manifestPath);
+                _logger.LogWarning("[EmbranchStateManifest.ReadManifestAsync] Manifest file is empty at: {Path}", manifestPath);
                 return null;
             }
 
@@ -54,28 +54,28 @@ public class DmmsStateManifest : IDmmsStateManifest
 
             if (manifest == null)
             {
-                _logger.LogWarning("[DmmsStateManifest.ReadManifestAsync] Failed to deserialize manifest at: {Path}", manifestPath);
+                _logger.LogWarning("[EmbranchStateManifest.ReadManifestAsync] Failed to deserialize manifest at: {Path}", manifestPath);
                 return null;
             }
 
             if (!ValidateManifest(manifest))
             {
-                _logger.LogWarning("[DmmsStateManifest.ReadManifestAsync] Invalid manifest structure at: {Path}", manifestPath);
+                _logger.LogWarning("[EmbranchStateManifest.ReadManifestAsync] Invalid manifest structure at: {Path}", manifestPath);
                 return null;
             }
 
-            _logger.LogDebug("[DmmsStateManifest.ReadManifestAsync] Successfully read manifest from: {Path}", manifestPath);
+            _logger.LogDebug("[EmbranchStateManifest.ReadManifestAsync] Successfully read manifest from: {Path}", manifestPath);
             return manifest;
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "[DmmsStateManifest.ReadManifestAsync] JSON parse error reading manifest at: {Path}",
+            _logger.LogWarning(ex, "[EmbranchStateManifest.ReadManifestAsync] JSON parse error reading manifest at: {Path}",
                 GetManifestPath(projectPath));
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[DmmsStateManifest.ReadManifestAsync] Error reading manifest from: {Path}",
+            _logger.LogError(ex, "[EmbranchStateManifest.ReadManifestAsync] Error reading manifest from: {Path}",
                 GetManifestPath(projectPath));
             return null;
         }
@@ -93,7 +93,7 @@ public class DmmsStateManifest : IDmmsStateManifest
             if (!Directory.Exists(dmmsDir))
             {
                 Directory.CreateDirectory(dmmsDir);
-                _logger.LogDebug("[DmmsStateManifest.WriteManifestAsync] Created .dmms directory at: {Path}", dmmsDir);
+                _logger.LogDebug("[EmbranchStateManifest.WriteManifestAsync] Created .dmms directory at: {Path}", dmmsDir);
             }
 
             // Update timestamp
@@ -102,11 +102,11 @@ public class DmmsStateManifest : IDmmsStateManifest
             var json = JsonSerializer.Serialize(updatedManifest, JsonOptions);
             await File.WriteAllTextAsync(manifestPath, json);
 
-            _logger.LogInformation("[DmmsStateManifest.WriteManifestAsync] Successfully wrote manifest to: {Path}", manifestPath);
+            _logger.LogInformation("[EmbranchStateManifest.WriteManifestAsync] Successfully wrote manifest to: {Path}", manifestPath);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[DmmsStateManifest.WriteManifestAsync] Error writing manifest to: {Path}",
+            _logger.LogError(ex, "[EmbranchStateManifest.WriteManifestAsync] Error writing manifest to: {Path}",
                 GetManifestPath(projectPath));
             throw;
         }
@@ -117,7 +117,7 @@ public class DmmsStateManifest : IDmmsStateManifest
     {
         var manifestPath = GetManifestPath(projectPath);
         var exists = File.Exists(manifestPath);
-        _logger.LogDebug("[DmmsStateManifest.ManifestExistsAsync] Manifest exists check at {Path}: {Exists}", manifestPath, exists);
+        _logger.LogDebug("[EmbranchStateManifest.ManifestExistsAsync] Manifest exists check at {Path}: {Exists}", manifestPath, exists);
         return Task.FromResult(exists);
     }
 
@@ -130,7 +130,7 @@ public class DmmsStateManifest : IDmmsStateManifest
 
             if (manifest == null)
             {
-                _logger.LogWarning("[DmmsStateManifest.UpdateDoltCommitAsync] No manifest found at: {Path}, cannot update Dolt commit", projectPath);
+                _logger.LogWarning("[EmbranchStateManifest.UpdateDoltCommitAsync] No manifest found at: {Path}, cannot update Dolt commit", projectPath);
                 return;
             }
 
@@ -148,12 +148,12 @@ public class DmmsStateManifest : IDmmsStateManifest
 
             await WriteManifestAsync(projectPath, updatedManifest);
 
-            _logger.LogInformation("[DmmsStateManifest.UpdateDoltCommitAsync] Updated Dolt commit to {Commit} on branch {Branch}",
+            _logger.LogInformation("[EmbranchStateManifest.UpdateDoltCommitAsync] Updated Dolt commit to {Commit} on branch {Branch}",
                 commitHash.Substring(0, Math.Min(7, commitHash.Length)), branch);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[DmmsStateManifest.UpdateDoltCommitAsync] Error updating Dolt commit in manifest");
+            _logger.LogError(ex, "[EmbranchStateManifest.UpdateDoltCommitAsync] Error updating Dolt commit in manifest");
             throw;
         }
     }
@@ -167,13 +167,13 @@ public class DmmsStateManifest : IDmmsStateManifest
 
             if (manifest == null)
             {
-                _logger.LogWarning("[DmmsStateManifest.RecordGitMappingAsync] No manifest found at: {Path}, cannot record Git mapping", projectPath);
+                _logger.LogWarning("[EmbranchStateManifest.RecordGitMappingAsync] No manifest found at: {Path}, cannot record Git mapping", projectPath);
                 return;
             }
 
             if (!manifest.GitMapping.Enabled)
             {
-                _logger.LogDebug("[DmmsStateManifest.RecordGitMappingAsync] Git mapping is disabled, skipping");
+                _logger.LogDebug("[EmbranchStateManifest.RecordGitMappingAsync] Git mapping is disabled, skipping");
                 return;
             }
 
@@ -191,13 +191,13 @@ public class DmmsStateManifest : IDmmsStateManifest
 
             await WriteManifestAsync(projectPath, updatedManifest);
 
-            _logger.LogInformation("[DmmsStateManifest.RecordGitMappingAsync] Recorded Git mapping: Git {GitCommit} -> Dolt {DoltCommit}",
+            _logger.LogInformation("[EmbranchStateManifest.RecordGitMappingAsync] Recorded Git mapping: Git {GitCommit} -> Dolt {DoltCommit}",
                 gitCommit.Substring(0, Math.Min(7, gitCommit.Length)),
                 doltCommit.Substring(0, Math.Min(7, doltCommit.Length)));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[DmmsStateManifest.RecordGitMappingAsync] Error recording Git mapping in manifest");
+            _logger.LogError(ex, "[EmbranchStateManifest.RecordGitMappingAsync] Error recording Git mapping in manifest");
             throw;
         }
     }
@@ -220,14 +220,14 @@ public class DmmsStateManifest : IDmmsStateManifest
         // Check version is supported
         if (string.IsNullOrWhiteSpace(manifest.Version))
         {
-            _logger.LogDebug("[DmmsStateManifest.ValidateManifest] Invalid: missing version");
+            _logger.LogDebug("[EmbranchStateManifest.ValidateManifest] Invalid: missing version");
             return false;
         }
 
         // Currently only support version 1.0
         if (manifest.Version != "1.0")
         {
-            _logger.LogDebug("[DmmsStateManifest.ValidateManifest] Invalid: unsupported version {Version}", manifest.Version);
+            _logger.LogDebug("[EmbranchStateManifest.ValidateManifest] Invalid: unsupported version {Version}", manifest.Version);
             return false;
         }
 
@@ -235,7 +235,7 @@ public class DmmsStateManifest : IDmmsStateManifest
         if (!string.IsNullOrEmpty(manifest.Initialization.Mode) &&
             !InitializationMode.IsValid(manifest.Initialization.Mode))
         {
-            _logger.LogDebug("[DmmsStateManifest.ValidateManifest] Invalid: unsupported initialization mode {Mode}",
+            _logger.LogDebug("[EmbranchStateManifest.ValidateManifest] Invalid: unsupported initialization mode {Mode}",
                 manifest.Initialization.Mode);
             return false;
         }
@@ -244,7 +244,7 @@ public class DmmsStateManifest : IDmmsStateManifest
         if (!string.IsNullOrEmpty(manifest.Initialization.OnClone) &&
             !OnCloneBehavior.IsValid(manifest.Initialization.OnClone))
         {
-            _logger.LogDebug("[DmmsStateManifest.ValidateManifest] Invalid: unsupported on_clone behavior {Behavior}",
+            _logger.LogDebug("[EmbranchStateManifest.ValidateManifest] Invalid: unsupported on_clone behavior {Behavior}",
                 manifest.Initialization.OnClone);
             return false;
         }
@@ -253,7 +253,7 @@ public class DmmsStateManifest : IDmmsStateManifest
         if (!string.IsNullOrEmpty(manifest.Initialization.OnBranchChange) &&
             !OnBranchChangeBehavior.IsValid(manifest.Initialization.OnBranchChange))
         {
-            _logger.LogDebug("[DmmsStateManifest.ValidateManifest] Invalid: unsupported on_branch_change behavior {Behavior}",
+            _logger.LogDebug("[EmbranchStateManifest.ValidateManifest] Invalid: unsupported on_branch_change behavior {Behavior}",
                 manifest.Initialization.OnBranchChange);
             return false;
         }

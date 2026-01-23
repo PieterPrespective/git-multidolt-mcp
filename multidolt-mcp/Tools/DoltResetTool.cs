@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
 /// MCP tool that resets to a specific commit, discarding local changes
@@ -15,7 +15,7 @@ public class DoltResetTool
     private readonly ILogger<DoltResetTool> _logger;
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
@@ -25,7 +25,7 @@ public class DoltResetTool
         ILogger<DoltResetTool> logger,
         IDoltCli doltCli,
         ISyncManagerV2 syncManager,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         ISyncStateChecker syncStateChecker)
     {
         _logger = logger;

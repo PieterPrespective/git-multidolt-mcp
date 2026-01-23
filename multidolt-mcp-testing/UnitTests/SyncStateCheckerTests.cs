@@ -2,10 +2,10 @@ using NUnit.Framework;
 using Moq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Services;
-using DMMS.Models;
+using Embranch.Services;
+using Embranch.Models;
 
-namespace DMMSTesting.UnitTests;
+namespace EmbranchTesting.UnitTests;
 
 /// <summary>
 /// PP13-79-C1: Unit tests for SyncStateChecker service.
@@ -17,7 +17,7 @@ public class SyncStateCheckerTests
     private Mock<ILogger<SyncStateChecker>> _loggerMock = null!;
     private Mock<IDoltCli> _doltCliMock = null!;
     private Mock<ISyncManagerV2> _syncManagerMock = null!;
-    private Mock<IDmmsStateManifest> _manifestServiceMock = null!;
+    private Mock<IEmbranchStateManifest> _manifestServiceMock = null!;
     private Mock<IGitIntegration> _gitIntegrationMock = null!;
     private Mock<IOptions<ServerConfiguration>> _serverConfigMock = null!;
     private SyncStateChecker _syncStateChecker = null!;
@@ -28,7 +28,7 @@ public class SyncStateCheckerTests
         _loggerMock = new Mock<ILogger<SyncStateChecker>>();
         _doltCliMock = new Mock<IDoltCli>();
         _syncManagerMock = new Mock<ISyncManagerV2>();
-        _manifestServiceMock = new Mock<IDmmsStateManifest>();
+        _manifestServiceMock = new Mock<IEmbranchStateManifest>();
         _gitIntegrationMock = new Mock<IGitIntegration>();
         _serverConfigMock = new Mock<IOptions<ServerConfiguration>>();
 

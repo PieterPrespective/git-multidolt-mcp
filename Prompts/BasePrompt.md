@@ -2,7 +2,7 @@
 
 | Variable         | Value | Notes                                                    |
 | ---------------- | ----- | -------------------------------------------------------- |
-| ProjectNamespace | DMMS  | Default namespace for the Dolt Multi-Database MCP server |
+| ProjectNamespace | Embranch | Default namespace for the Embranch MCP server |
 |                  |       |                                                          |
 
 ## C-sharp specific rules

@@ -2,10 +2,10 @@ using NUnit.Framework;
 using Moq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Services;
-using DMMS.Models;
+using Embranch.Services;
+using Embranch.Models;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// PP13-79-C1: Integration tests for safe sync logic.
@@ -17,7 +17,7 @@ public class PP13_79_C1_SafeSyncTests
     private Mock<ILogger<SyncStateChecker>> _loggerMock = null!;
     private Mock<IDoltCli> _doltCliMock = null!;
     private Mock<ISyncManagerV2> _syncManagerMock = null!;
-    private Mock<IDmmsStateManifest> _manifestMock = null!;
+    private Mock<IEmbranchStateManifest> _manifestMock = null!;
     private Mock<IGitIntegration> _gitIntegrationMock = null!;
     private IOptions<ServerConfiguration> _serverConfigOptions = null!;
     private SyncStateChecker _syncStateChecker = null!;
@@ -29,7 +29,7 @@ public class PP13_79_C1_SafeSyncTests
         _loggerMock = new Mock<ILogger<SyncStateChecker>>();
         _doltCliMock = new Mock<IDoltCli>();
         _syncManagerMock = new Mock<ISyncManagerV2>();
-        _manifestMock = new Mock<IDmmsStateManifest>();
+        _manifestMock = new Mock<IEmbranchStateManifest>();
         _gitIntegrationMock = new Mock<IGitIntegration>();
 
         var serverConfig = new ServerConfiguration { ProjectRoot = TestProjectRoot };

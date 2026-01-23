@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
-using DMMS.Services;
+using Embranch.Services;
 
-namespace DMMSTesting;
+namespace EmbranchTesting;
 
 /// <summary>
 /// Global test setup that initializes PythonContext once for all tests in the assembly

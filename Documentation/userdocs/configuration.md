@@ -24,7 +24,7 @@ Add the VM RAG MCP Server to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "vm-rag": {
-      "command": "C:\\Program Files\\VM-RAG-MCP\\DMMS.exe"
+      "command": "C:\\Program Files\\VM-RAG-MCP\\Embranch.exe"
     }
   }
 }
@@ -40,7 +40,7 @@ The server uses environment variables for configuration. Here's a comprehensive 
 {
   "mcpServers": {
     "vm-rag": {
-      "command": "C:\\Program Files\\VM-RAG-MCP\\DMMS.exe",
+      "command": "C:\\Program Files\\VM-RAG-MCP\\Embranch.exe",
       "env": {
         "CHROMA_DATA_PATH": "./data/chroma_data",
         "DOLT_REPOSITORY_PATH": "./data/dolt-repo",
@@ -153,7 +153,7 @@ For a production setup with dedicated storage:
 {
   "mcpServers": {
     "vm-rag-prod": {
-      "command": "C:\\Program Files\\VM-RAG-MCP\\DMMS.exe",
+      "command": "C:\\Program Files\\VM-RAG-MCP\\Embranch.exe",
       "env": {
         "CHROMA_DATA_PATH": "D:\\KnowledgeBase\\chroma",
         "DOLT_REPOSITORY_PATH": "D:\\KnowledgeBase\\dolt-repo",
@@ -175,7 +175,7 @@ You can configure different profiles for different knowledge bases:
 {
   "mcpServers": {
     "vm-rag-dev": {
-      "command": "C:\\Program Files\\VM-RAG-MCP\\DMMS.exe",
+      "command": "C:\\Program Files\\VM-RAG-MCP\\Embranch.exe",
       "env": {
         "CHROMA_DATA_PATH": "./data/dev/chroma",
         "DOLT_REPOSITORY_PATH": "./data/dev/dolt-repo",
@@ -184,7 +184,7 @@ You can configure different profiles for different knowledge bases:
       }
     },
     "vm-rag-docs": {
-      "command": "C:\\Program Files\\VM-RAG-MCP\\DMMS.exe",
+      "command": "C:\\Program Files\\VM-RAG-MCP\\Embranch.exe",
       "env": {
         "CHROMA_DATA_PATH": "./data/docs/chroma",
         "DOLT_REPOSITORY_PATH": "./data/docs/dolt-repo",

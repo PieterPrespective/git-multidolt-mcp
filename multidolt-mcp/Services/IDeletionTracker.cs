@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service for tracking document deletions in an external database to survive git operations

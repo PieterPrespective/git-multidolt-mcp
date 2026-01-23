@@ -2,7 +2,7 @@ using CliWrap;
 using CliWrap.Buffered;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// PP13-79: Implementation of Git repository integration.

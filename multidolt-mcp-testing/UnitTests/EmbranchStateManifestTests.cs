@@ -1,28 +1,28 @@
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Moq;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using System.Text.Json;
 
-namespace DMMSTesting.UnitTests;
+namespace EmbranchTesting.UnitTests;
 
 /// <summary>
-/// PP13-79: Unit tests for DmmsStateManifest service
+/// PP13-79: Unit tests for EmbranchStateManifest service
 /// </summary>
 [TestFixture]
 [Category("Unit")]
-public class DmmsStateManifestTests
+public class EmbranchStateManifestTests
 {
-    private Mock<ILogger<DmmsStateManifest>> _loggerMock = null!;
-    private DmmsStateManifest _manifestService = null!;
+    private Mock<ILogger<EmbranchStateManifest>> _loggerMock = null!;
+    private EmbranchStateManifest _manifestService = null!;
     private string _testDirectory = null!;
 
     [SetUp]
     public void Setup()
     {
-        _loggerMock = new Mock<ILogger<DmmsStateManifest>>();
-        _manifestService = new DmmsStateManifest(_loggerMock.Object);
+        _loggerMock = new Mock<ILogger<EmbranchStateManifest>>();
+        _manifestService = new EmbranchStateManifest(_loggerMock.Object);
 
         // Create a unique test directory for each test
         _testDirectory = Path.Combine(Path.GetTempPath(), "DmmsManifestTests", Guid.NewGuid().ToString());

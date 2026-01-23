@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Utilities;
+namespace Embranch.Utilities;
 
 /// <summary>
 /// Utility class providing safe logging methods for MCP tools with consistent formatting

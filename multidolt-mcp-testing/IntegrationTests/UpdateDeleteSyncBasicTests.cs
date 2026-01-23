@@ -1,12 +1,12 @@
 using System.Linq;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 
-namespace DMMS.IntegrationTests
+namespace Embranch.IntegrationTests
 {
     /// <summary>
     /// Basic integration tests for PP13-60-C1 Update/Delete sync functionality

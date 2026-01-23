@@ -6,11 +6,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 
-namespace DMMS.Testing.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 [TestFixture]
 public class CollectionSyncIntegrationTests

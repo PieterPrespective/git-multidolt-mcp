@@ -222,7 +222,7 @@ public async Task<object> ExecuteDoltMerge(
 ### 3.1 Enhanced Conflict Models
 
 ```csharp
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Detailed merge conflict information with GUID for tracking
@@ -313,7 +313,7 @@ namespace DMMS.Models
 ### 3.2 Service Interfaces
 
 ```csharp
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service for analyzing potential merge conflicts
@@ -369,11 +369,11 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 [McpServerToolType]
 public class PreviewDoltMergeTool

@@ -4,12 +4,12 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Detects changes in ChromaDB that need to be staged to Dolt.

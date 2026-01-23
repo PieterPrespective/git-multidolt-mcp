@@ -1,16 +1,16 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 using Python.Runtime;
 using System.IO.Compression;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// Integration tests for the LegacyDbMigrator service with real ChromaDB databases.
 /// Tests migration functionality with the out-of-date test database.
-/// Uses DMMSTesting namespace for GlobalTestSetup PythonContext initialization.
+/// Uses EmbranchTesting namespace for GlobalTestSetup PythonContext initialization.
 /// </summary>
 [TestFixture]
 public class LegacyDbMigrationIntegrationTests

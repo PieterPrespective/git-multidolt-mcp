@@ -1,6 +1,6 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Complete Dolt CLI wrapper - all operations via subprocess

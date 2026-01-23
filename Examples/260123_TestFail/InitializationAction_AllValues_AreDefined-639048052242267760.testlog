@@ -1,0 +1,14 @@
+﻿ InitializationAction_AllValues_AreDefined
+   Source: ManifestModelsTests.cs line 218
+   Duration: 9 ms
+
+  Message: 
+      Assert.That(actualValues, Is.EquivalentTo(expectedValues))
+      Expected: equivalent to < None, ClonedAndSynced, FetchedAndSynced, CheckedOutBranch, CheckedOutCommit, SyncedExisting, Skipped, Failed >
+      But was:  < None, ClonedAndSynced, FetchedAndSynced, CheckedOutBranch, CheckedOutCommit, SyncedExisting, Skipped, Failed, PendingConfiguration >
+      Extra (1): < PendingConfiguration >
+    
+
+  Stack Trace: 
+    ManifestModelsTests.InitializationAction_AllValues_AreDefined() line 237
+    1)    at EmbranchTesting.UnitTests.ManifestModelsTests.InitializationAction_AllValues_AreDefined() in D:\Prespective\GIT\git-multidolt-mcp\git-multidolt-mcp\multidolt-mcp-testing\UnitTests\ManifestModelsTests.cs:line 237

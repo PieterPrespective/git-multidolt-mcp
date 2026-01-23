@@ -1,11 +1,11 @@
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Python.Runtime;
 
-namespace DMMSTesting.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests for the ImportAnalyzer service.

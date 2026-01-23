@@ -1,4 +1,4 @@
-using DMMS.Models;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Python.Runtime;
@@ -6,7 +6,7 @@ using System.Collections;
 using System.Text.Json;
 using System.Xml.Linq;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// ChromaDB service using Python.NET to interact with the chromadb Python library

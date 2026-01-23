@@ -5,8 +5,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>DMMSManualTesting</AssemblyName>
-    <RootNamespace>DMMSManualTesting</RootNamespace>
+    <AssemblyName>EmbranchManualTesting</AssemblyName>
+    <RootNamespace>EmbranchManualTesting</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\multidolt-mcp\DMMS.csproj" />
+    <ProjectReference Include="..\multidolt-mcp\Embranch.csproj" />
   </ItemGroup>
 
 </Project>

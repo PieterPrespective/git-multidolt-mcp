@@ -7,9 +7,9 @@ using System.Threading;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// SQLite-based implementation of deletion tracking and sync state tracking services

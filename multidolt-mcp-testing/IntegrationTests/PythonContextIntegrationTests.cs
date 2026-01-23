@@ -2,9 +2,9 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 using Python.Runtime;
-using DMMS.Services;
+using Embranch.Services;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// Integration tests for PythonContext that test actual Python.NET functionality

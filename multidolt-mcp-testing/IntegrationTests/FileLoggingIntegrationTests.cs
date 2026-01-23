@@ -1,12 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using DMMS.Logging;
-using DMMS.Models;
-using DMMS.Tools;
-using DMMSTesting.Utilities;
+using Embranch.Logging;
+using Embranch.Models;
+using Embranch.Tools;
+using EmbranchTesting.Utilities;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// Integration tests for file-based logging functionality
@@ -62,7 +62,7 @@ public class FileLoggingIntegrationTests
     {
         // Create a unique log file for this test
         var testId = Guid.NewGuid().ToString("N").Substring(0, 8);
-        var testLogFileName = $"DMMS_Test_{testId}.log";
+        var testLogFileName = $"Embranch_Test_{testId}.log";
         
         // The log will be created next to the test assembly
         var testAssemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;

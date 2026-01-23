@@ -1,12 +1,12 @@
-using DMMS.Models;
-using DMMS.Services;
-using DMMSTesting.Utilities;
+using Embranch.Models;
+using Embranch.Services;
+using EmbranchTesting.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework.Internal;
 using System.Diagnostics;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// Integration tests for ChromaPersistentDbService with actual file system

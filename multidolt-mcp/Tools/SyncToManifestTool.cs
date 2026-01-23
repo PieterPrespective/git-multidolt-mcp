@@ -1,29 +1,29 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
-/// PP13-79: MCP tool to sync DMMS state to match the manifest
-/// Syncs local DMMS state (Dolt + ChromaDB) to match the manifest-specified state
+/// PP13-79: MCP tool to sync Embranch state to match the manifest
+/// Syncs local Embranch state (Dolt + ChromaDB) to match the manifest-specified state
 /// </summary>
 [McpServerToolType]
 public class SyncToManifestTool
 {
     private readonly ILogger<SyncToManifestTool> _logger;
-    private readonly IDmmsStateManifest _manifestService;
-    private readonly IDmmsInitializer _initializer;
+    private readonly IEmbranchStateManifest _manifestService;
+    private readonly IEmbranchInitializer _initializer;
     private readonly IDoltCli _doltCli;
     private readonly IGitIntegration _gitIntegration;
 
     public SyncToManifestTool(
         ILogger<SyncToManifestTool> logger,
-        IDmmsStateManifest manifestService,
-        IDmmsInitializer initializer,
+        IEmbranchStateManifest manifestService,
+        IEmbranchInitializer initializer,
         IDoltCli doltCli,
         IGitIntegration gitIntegration)
     {
@@ -35,12 +35,12 @@ public class SyncToManifestTool
     }
 
     /// <summary>
-    /// Sync local DMMS state (Dolt + ChromaDB) to match the manifest.
+    /// Sync local Embranch state (Dolt + ChromaDB) to match the manifest.
     /// This will checkout the specified Dolt commit/branch and sync ChromaDB accordingly.
     /// Optionally, you can override the target commit or branch to sync to a different state.
     /// </summary>
     [McpServerTool]
-    [Description("Sync local DMMS state (Dolt + ChromaDB) to match the manifest. This will checkout the specified Dolt commit/branch and sync ChromaDB accordingly. Use target_commit or target_branch to override the manifest.")]
+    [Description("Sync local Embranch state (Dolt + ChromaDB) to match the manifest. This will checkout the specified Dolt commit/branch and sync ChromaDB accordingly. Use target_commit or target_branch to override the manifest.")]
     public virtual async Task<object> SyncToManifest(
         bool? force = false,
         string? target_commit = null,

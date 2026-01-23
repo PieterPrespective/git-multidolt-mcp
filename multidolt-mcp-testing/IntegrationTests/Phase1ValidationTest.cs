@@ -5,10 +5,10 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration test to validate Phase 1: Multi-collection sync during branch checkout

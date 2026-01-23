@@ -1,7 +1,7 @@
 using Python.Runtime;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// DEPRECATED: Backward compatibility wrapper for ChromaClientPool

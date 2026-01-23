@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using DMMS.Models;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service for detecting changes between Dolt database state and ChromaDB sync state.

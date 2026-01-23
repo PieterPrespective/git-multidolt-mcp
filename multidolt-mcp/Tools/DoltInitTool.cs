@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
 /// MCP tool that initializes a new Dolt repository
@@ -15,7 +15,7 @@ public class DoltInitTool
     private readonly ILogger<DoltInitTool> _logger;
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
@@ -25,7 +25,7 @@ public class DoltInitTool
         ILogger<DoltInitTool> logger,
         IDoltCli doltCli,
         ISyncManagerV2 syncManager,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         ISyncStateChecker syncStateChecker)
     {
         _logger = logger;

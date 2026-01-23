@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using NUnit.Framework;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Testing.UnitTests
+namespace EmbranchTesting.UnitTests
 {
     /// <summary>
     /// Simple unit tests for PP13-68 content hash verification logic

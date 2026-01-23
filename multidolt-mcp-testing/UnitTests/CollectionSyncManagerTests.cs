@@ -6,10 +6,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using NUnit.Framework;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 
-namespace DMMS.Testing.UnitTests;
+namespace EmbranchTesting.UnitTests;
 
 [TestFixture]
 public class CollectionSyncManagerTests

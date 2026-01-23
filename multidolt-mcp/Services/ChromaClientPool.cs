@@ -2,7 +2,7 @@ using Python.Runtime;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// Thread-safe client pool for managing multiple ChromaDB Python client instances

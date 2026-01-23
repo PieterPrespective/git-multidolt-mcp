@@ -2,11 +2,11 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Tools
+namespace Embranch.Tools
 {
     /// <summary>
     /// MCP tool for executing merge operations with conflict resolution
@@ -20,7 +20,7 @@ namespace DMMS.Tools
         private readonly IMergeConflictResolver _conflictResolver;
         private readonly ISyncManagerV2 _syncManager;
         private readonly IConflictAnalyzer _conflictAnalyzer;
-        private readonly IDmmsStateManifest _manifestService;
+        private readonly IEmbranchStateManifest _manifestService;
         private readonly ISyncStateChecker _syncStateChecker;
 
         /// <summary>
@@ -39,7 +39,7 @@ namespace DMMS.Tools
             IMergeConflictResolver conflictResolver,
             ISyncManagerV2 syncManager,
             IConflictAnalyzer conflictAnalyzer,
-            IDmmsStateManifest manifestService,
+            IEmbranchStateManifest manifestService,
             ISyncStateChecker syncStateChecker)
         {
             _logger = logger;

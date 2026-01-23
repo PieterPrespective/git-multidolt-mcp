@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Disposable context manager for import operations that handles legacy database migration transparently.

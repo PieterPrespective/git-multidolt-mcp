@@ -2,11 +2,11 @@ using NUnit.Framework;
 using Moq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Tools;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Tools;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// PP13-81: Integration tests for empty repository initialization blocking clone operations.
@@ -19,10 +19,10 @@ namespace DMMSTesting.IntegrationTests;
 [TestFixture]
 public class PP13_81_EmptyRepoTests
 {
-    private Mock<ILogger<DmmsInitializer>> _initializerLoggerMock = null!;
+    private Mock<ILogger<EmbranchInitializer>> _initializerLoggerMock = null!;
     private Mock<IDoltCli> _doltCliMock = null!;
     private Mock<ISyncManagerV2> _syncManagerMock = null!;
-    private Mock<IDmmsStateManifest> _manifestMock = null!;
+    private Mock<IEmbranchStateManifest> _manifestMock = null!;
     private Mock<IGitIntegration> _gitIntegrationMock = null!;
     private Mock<ISyncStateTracker> _syncStateTrackerMock = null!;
     private Mock<ISyncStateChecker> _syncStateCheckerMock = null!;
@@ -33,10 +33,10 @@ public class PP13_81_EmptyRepoTests
     [SetUp]
     public void Setup()
     {
-        _initializerLoggerMock = new Mock<ILogger<DmmsInitializer>>();
+        _initializerLoggerMock = new Mock<ILogger<EmbranchInitializer>>();
         _doltCliMock = new Mock<IDoltCli>();
         _syncManagerMock = new Mock<ISyncManagerV2>();
-        _manifestMock = new Mock<IDmmsStateManifest>();
+        _manifestMock = new Mock<IEmbranchStateManifest>();
         _gitIntegrationMock = new Mock<IGitIntegration>();
         _syncStateTrackerMock = new Mock<ISyncStateTracker>();
         _syncStateCheckerMock = new Mock<ISyncStateChecker>();
@@ -48,7 +48,7 @@ public class PP13_81_EmptyRepoTests
         _doltCliMock.Setup(d => d.IsInitializedAsync()).ReturnsAsync(false);
     }
 
-    #region Phase 1: DmmsInitializer - PendingConfiguration Tests
+    #region Phase 1: EmbranchInitializer - PendingConfiguration Tests
 
     [Test]
     [Description("PP13-81: When no remote URL and no local repo, return PendingConfiguration")]
@@ -67,7 +67,7 @@ public class PP13_81_EmptyRepoTests
 
         _doltCliMock.Setup(d => d.IsInitializedAsync()).ReturnsAsync(false);
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             _doltCliMock.Object,
             _syncManagerMock.Object,
@@ -114,7 +114,7 @@ public class PP13_81_EmptyRepoTests
         _syncManagerMock.Setup(s => s.FullSyncAsync(It.IsAny<string?>(), It.IsAny<bool>()))
             .ReturnsAsync(new SyncResultV2 { Status = SyncStatusV2.Completed });
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             _doltCliMock.Object,
             _syncManagerMock.Object,
@@ -153,7 +153,7 @@ public class PP13_81_EmptyRepoTests
             }
         };
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             _doltCliMock.Object,
             _syncManagerMock.Object,

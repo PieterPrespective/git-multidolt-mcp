@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Stages changes from ChromaDB to Dolt (like 'git add').

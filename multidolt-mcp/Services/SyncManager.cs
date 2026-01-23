@@ -1,8 +1,8 @@
-using DMMS.Models;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Coordinates synchronization between Dolt version control and ChromaDB vector database.

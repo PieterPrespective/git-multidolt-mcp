@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using DMMS.Models;
-using DMMS.Tools;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Tools;
+using Embranch.Services;
 
-namespace DMMSTesting.Tools;
+namespace EmbranchTesting.Tools;
 
 /// <summary>
 /// Unit tests for the DoltPushTool class focusing on push result reporting accuracy

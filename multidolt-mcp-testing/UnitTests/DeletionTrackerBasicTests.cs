@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DMMS.UnitTests
+namespace Embranch.UnitTests
 {
     /// <summary>
     /// Basic unit tests for SqliteDeletionTracker service

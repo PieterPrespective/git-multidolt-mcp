@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace DMMS.Logging;
+namespace Embranch.Logging;
 
 /// <summary>
 /// Thread-safe file writer for logging
@@ -33,7 +33,7 @@ public sealed class FileLogWriter : IDisposable
         _writerThread = new Thread(ProcessLogQueue)
         {
             IsBackground = true,
-            Name = "DMMS-FileLogWriter"
+            Name = "Embranch-FileLogWriter"
         };
         _writerThread.Start();
     }

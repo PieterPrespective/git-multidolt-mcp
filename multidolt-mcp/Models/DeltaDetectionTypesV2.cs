@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// V2 Model Types for Bidirectional Sync Architecture

@@ -1,4 +1,4 @@
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// PP13-79: Interface for Git repository integration.

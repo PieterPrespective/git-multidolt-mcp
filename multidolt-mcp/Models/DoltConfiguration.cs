@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Configuration settings for Dolt database integration
@@ -43,8 +43,8 @@ namespace DMMS.Models
 
         /// <summary>
         /// PP13-79: Whether to read and use .dmms/state.json manifest for initialization.
-        /// When true, DMMS will look for a manifest file and use it to initialize state.
-        /// Environment variable: DMMS_USE_MANIFEST
+        /// When true, Embranch will look for a manifest file and use it to initialize state.
+        /// Environment variable: EMBRANCH_USE_MANIFEST
         /// </summary>
         public bool UseManifest { get; set; } = true;
     }

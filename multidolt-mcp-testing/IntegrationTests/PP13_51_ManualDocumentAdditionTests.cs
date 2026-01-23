@@ -2,15 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 
-namespace DMMSTesting.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests for PP13-51: Manual document additions via ChromaAddDocumentsTool 

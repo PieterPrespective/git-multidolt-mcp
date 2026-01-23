@@ -1,13 +1,13 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service implementation for executing import operations with conflict resolution.
-    /// Imports documents from external ChromaDB databases into the local DMMS-managed database,
+    /// Imports documents from external ChromaDB databases into the local Embranch-managed database,
     /// using IChromaDbService.AddDocumentsAsync for proper chunking, metadata, and batch operations.
     /// </summary>
     public class ImportExecutor : IImportExecutor

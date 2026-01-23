@@ -1,6 +1,6 @@
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
@@ -8,12 +8,12 @@ using Python.Runtime;
 using System.IO.Compression;
 using System.Text.Json;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// End-to-end tests for importing from legacy ChromaDB databases.
 /// Tests the full workflow including PreviewImportTool and ExecuteImportTool.
-/// Uses DMMSTesting namespace for GlobalTestSetup PythonContext initialization.
+/// Uses EmbranchTesting namespace for GlobalTestSetup PythonContext initialization.
 /// </summary>
 [TestFixture]
 public class PP13_76_LegacyImportE2ETests

@@ -1,10 +1,10 @@
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Moq;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// PP13-79: Integration tests for DMMS manifest operations
@@ -13,15 +13,15 @@ namespace DMMSTesting.IntegrationTests;
 [Category("Integration")]
 public class PP13_79_ManifestIntegrationTests
 {
-    private Mock<ILogger<DmmsStateManifest>> _loggerMock = null!;
-    private DmmsStateManifest _manifestService = null!;
+    private Mock<ILogger<EmbranchStateManifest>> _loggerMock = null!;
+    private EmbranchStateManifest _manifestService = null!;
     private string _testDirectory = null!;
 
     [SetUp]
     public void Setup()
     {
-        _loggerMock = new Mock<ILogger<DmmsStateManifest>>();
-        _manifestService = new DmmsStateManifest(_loggerMock.Object);
+        _loggerMock = new Mock<ILogger<EmbranchStateManifest>>();
+        _manifestService = new EmbranchStateManifest(_loggerMock.Object);
 
         // Create a unique test directory for each test
         _testDirectory = Path.Combine(Path.GetTempPath(), "DmmsManifestIntegration", Guid.NewGuid().ToString());

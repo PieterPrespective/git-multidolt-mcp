@@ -2,10 +2,10 @@ using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// PP13-79: End-to-end tests for DMMS initialization from manifest
@@ -16,22 +16,22 @@ namespace DMMSTesting.IntegrationTests;
 [Category("E2E")]
 public class PP13_79_InitializationE2ETests
 {
-    private Mock<ILogger<DmmsStateManifest>> _manifestLoggerMock = null!;
+    private Mock<ILogger<EmbranchStateManifest>> _manifestLoggerMock = null!;
     private Mock<ILogger<GitIntegration>> _gitLoggerMock = null!;
-    private Mock<ILogger<DmmsInitializer>> _initializerLoggerMock = null!;
+    private Mock<ILogger<EmbranchInitializer>> _initializerLoggerMock = null!;
 
-    private DmmsStateManifest _manifestService = null!;
+    private EmbranchStateManifest _manifestService = null!;
     private GitIntegration _gitIntegration = null!;
     private string _testDirectory = null!;
 
     [SetUp]
     public void Setup()
     {
-        _manifestLoggerMock = new Mock<ILogger<DmmsStateManifest>>();
+        _manifestLoggerMock = new Mock<ILogger<EmbranchStateManifest>>();
         _gitLoggerMock = new Mock<ILogger<GitIntegration>>();
-        _initializerLoggerMock = new Mock<ILogger<DmmsInitializer>>();
+        _initializerLoggerMock = new Mock<ILogger<EmbranchInitializer>>();
 
-        _manifestService = new DmmsStateManifest(_manifestLoggerMock.Object);
+        _manifestService = new EmbranchStateManifest(_manifestLoggerMock.Object);
         _gitIntegration = new GitIntegration(_gitLoggerMock.Object);
 
         _testDirectory = Path.Combine(Path.GetTempPath(), "DmmsInitE2E", Guid.NewGuid().ToString());
@@ -66,7 +66,7 @@ public class PP13_79_InitializationE2ETests
         var syncManagerMock = new Mock<ISyncManagerV2>();
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -107,7 +107,7 @@ public class PP13_79_InitializationE2ETests
         var syncManagerMock = new Mock<ISyncManagerV2>();
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -152,7 +152,7 @@ public class PP13_79_InitializationE2ETests
 
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -192,7 +192,7 @@ public class PP13_79_InitializationE2ETests
         var syncManagerMock = new Mock<ISyncManagerV2>();
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -222,7 +222,7 @@ public class PP13_79_InitializationE2ETests
         var syncManagerMock = new Mock<ISyncManagerV2>();
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -269,7 +269,7 @@ public class PP13_79_InitializationE2ETests
 
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -317,7 +317,7 @@ public class PP13_79_InitializationE2ETests
 
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -346,7 +346,7 @@ public class PP13_79_InitializationE2ETests
 
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -381,7 +381,7 @@ public class PP13_79_InitializationE2ETests
         var syncManagerMock = new Mock<ISyncManagerV2>();
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,
@@ -430,7 +430,7 @@ public class PP13_79_InitializationE2ETests
 
         var doltConfig = Options.Create(new DoltConfiguration());
 
-        var initializer = new DmmsInitializer(
+        var initializer = new EmbranchInitializer(
             _initializerLoggerMock.Object,
             doltCliMock.Object,
             syncManagerMock.Object,

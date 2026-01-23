@@ -7,11 +7,11 @@ using NUnit.Framework;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Moq;
 
-namespace DMMS.IntegrationTests
+namespace Embranch.IntegrationTests
 {
     /// <summary>
     /// Integration tests for Phase 4: Production Initialization Patterns (PP13-61)

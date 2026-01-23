@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace DMMS.Models;
+namespace Embranch.Models;
 
 /// <summary>
 /// PP13-79: Root manifest model for .dmms/state.json
@@ -184,7 +184,7 @@ public record InitializationCheck
 }
 
 /// <summary>
-/// PP13-79: Result of DMMS initialization operation
+/// PP13-79: Result of Embranch initialization operation
 /// </summary>
 public record InitializationResult
 {
@@ -319,7 +319,7 @@ public static class OnCloneBehavior
     public const string SyncToLatest = "sync_to_latest";
 
     /// <summary>
-    /// Start with empty DMMS state
+    /// Start with empty Embranch state
     /// </summary>
     public const string Empty = "empty";
 
@@ -341,7 +341,7 @@ public static class OnCloneBehavior
 public static class OnBranchChangeBehavior
 {
     /// <summary>
-    /// Preserve local DMMS state
+    /// Preserve local Embranch state
     /// </summary>
     public const string PreserveLocal = "preserve_local";
 

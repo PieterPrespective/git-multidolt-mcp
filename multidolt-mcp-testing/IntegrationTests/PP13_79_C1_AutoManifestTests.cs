@@ -2,11 +2,11 @@ using NUnit.Framework;
 using Moq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Services;
-using DMMS.Models;
+using Embranch.Services;
+using Embranch.Models;
 using System.Text.Json;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// PP13-79-C1: Integration tests for automatic manifest creation.
@@ -16,8 +16,8 @@ namespace DMMSTesting.IntegrationTests;
 public class PP13_79_C1_AutoManifestTests
 {
     private string _testProjectRoot = null!;
-    private Mock<ILogger<DmmsStateManifest>> _loggerMock = null!;
-    private DmmsStateManifest _manifestService = null!;
+    private Mock<ILogger<EmbranchStateManifest>> _loggerMock = null!;
+    private EmbranchStateManifest _manifestService = null!;
 
     [SetUp]
     public void Setup()
@@ -25,9 +25,9 @@ public class PP13_79_C1_AutoManifestTests
         _testProjectRoot = Path.Combine(Path.GetTempPath(), $"PP13_79_C1_Test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testProjectRoot);
 
-        _loggerMock = new Mock<ILogger<DmmsStateManifest>>();
+        _loggerMock = new Mock<ILogger<EmbranchStateManifest>>();
 
-        _manifestService = new DmmsStateManifest(_loggerMock.Object);
+        _manifestService = new EmbranchStateManifest(_loggerMock.Object);
     }
 
     [TearDown]

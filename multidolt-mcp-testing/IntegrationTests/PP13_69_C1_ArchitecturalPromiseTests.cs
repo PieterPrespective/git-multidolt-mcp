@@ -1,14 +1,14 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 using Moq;
 
-namespace DMMS.IntegrationTests
+namespace Embranch.IntegrationTests
 {
     /// <summary>
     /// Tests to validate the architectural promises of PP13-69-C1:

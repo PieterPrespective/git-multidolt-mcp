@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace DMMS.Utilities
+namespace Embranch.Utilities
 {
     /// <summary>
     /// Utility methods for JSON handling, particularly for Dolt query result parsing.

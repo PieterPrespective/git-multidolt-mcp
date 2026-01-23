@@ -3,16 +3,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using DMMS.Services;
-using DMMS.Tools;
-using DMMS.Models;
+using Embranch.Services;
+using Embranch.Tools;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NUnit.Framework;
 using System.Text.Json;
 using Moq;
 
-namespace DMMSTesting.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration test that validates the MCP tools by duplicating the ChromaDoltSyncIntegrationTestsV2 workflow
@@ -101,8 +101,8 @@ namespace DMMSTesting.IntegrationTests
             user.ChromaPeekCollectionTool = new ChromaPeekCollectionTool(
                 loggerFactory.CreateLogger<ChromaPeekCollectionTool>(), user.ChromaService);
                 
-            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IEmbranchStateManifest>().Object;
             var syncStateChecker = new Mock<ISyncStateChecker>().Object;
 
             // Initialize Dolt tools
@@ -750,7 +750,7 @@ namespace DMMSTesting.IntegrationTests
         public IDoltCli DoltCli { get; private set; } = null!;
         public IDeletionTracker DeletionTracker { get; private set; } = null!;
         public ISyncManagerV2 SyncManager { get; private set; } = null!;
-        public DMMS.Models.DoltConfiguration DoltConfig { get; private set; } = null!;
+        public Embranch.Models.DoltConfiguration DoltConfig { get; private set; } = null!;
         
         // MCP Tool instances
         public ChromaCreateCollectionTool? ChromaCreateCollectionTool;
@@ -788,7 +788,7 @@ namespace DMMSTesting.IntegrationTests
         private void InitializeServices()
         {
             // Create ChromaDB service
-            var chromaConfig = Options.Create(new DMMS.Models.ServerConfiguration
+            var chromaConfig = Options.Create(new Embranch.Models.ServerConfiguration
             {
                 ChromaDataPath = ChromaPath,
                 DataPath = Path.GetDirectoryName(ChromaPath)
@@ -797,7 +797,7 @@ namespace DMMSTesting.IntegrationTests
             ChromaService = new ChromaPythonService(chromaLogger, chromaConfig);
             
             // Create Dolt CLI
-            DoltConfig = new DMMS.Models.DoltConfiguration
+            DoltConfig = new Embranch.Models.DoltConfiguration
             {
                 RepositoryPath = DoltRepoPath,
                 DoltExecutablePath = "dolt"

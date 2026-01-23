@@ -1,16 +1,16 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
-/// PP13-79: Interface for DMMS state initialization.
-/// Handles initializing DMMS state based on manifest and configuration,
+/// PP13-79: Interface for Embranch state initialization.
+/// Handles initializing Embranch state based on manifest and configuration,
 /// including cloning from remote, fetching updates, and syncing ChromaDB.
 /// </summary>
-public interface IDmmsInitializer
+public interface IEmbranchInitializer
 {
     /// <summary>
-    /// Initializes DMMS state based on the manifest configuration.
+    /// Initializes Embranch state based on the manifest configuration.
     /// This may involve cloning, fetching, checking out branches/commits,
     /// and syncing ChromaDB to match the Dolt state.
     /// </summary>
@@ -28,7 +28,7 @@ public interface IDmmsInitializer
     Task<InitializationCheck> CheckInitializationNeededAsync(DmmsManifest manifest);
 
     /// <summary>
-    /// Syncs local DMMS state to match a specific Dolt commit.
+    /// Syncs local Embranch state to match a specific Dolt commit.
     /// This includes checking out the commit and syncing ChromaDB.
     /// </summary>
     /// <param name="doltCommit">The Dolt commit hash to sync to</param>
@@ -37,7 +37,7 @@ public interface IDmmsInitializer
     Task<SyncResultV2> SyncToCommitAsync(string doltCommit, string? branch = null);
 
     /// <summary>
-    /// Syncs local DMMS state to match a specific Dolt branch (latest commit on branch).
+    /// Syncs local Embranch state to match a specific Dolt branch (latest commit on branch).
     /// This includes checking out the branch and syncing ChromaDB.
     /// </summary>
     /// <param name="branchName">The Dolt branch name to sync to</param>
@@ -48,13 +48,13 @@ public interface IDmmsInitializer
     /// Gets the current initialization state for diagnostics.
     /// </summary>
     /// <returns>Current state information</returns>
-    Task<DmmsInitializationState> GetCurrentStateAsync();
+    Task<EmbranchInitializationState> GetCurrentStateAsync();
 }
 
 /// <summary>
-/// PP13-79: Current DMMS initialization state for diagnostics
+/// PP13-79: Current Embranch initialization state for diagnostics
 /// </summary>
-public class DmmsInitializationState
+public class EmbranchInitializationState
 {
     /// <summary>
     /// Whether Dolt repository is initialized

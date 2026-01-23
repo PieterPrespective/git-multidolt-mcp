@@ -1,7 +1,7 @@
 using NUnit.Framework;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Testing.UnitTests
+namespace EmbranchTesting.UnitTests
 {
     /// <summary>
     /// Unit tests for cross-collection ID collision detection utilities.

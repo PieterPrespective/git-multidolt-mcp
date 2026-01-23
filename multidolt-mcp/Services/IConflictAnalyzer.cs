@@ -1,6 +1,6 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service for analyzing potential merge conflicts before execution

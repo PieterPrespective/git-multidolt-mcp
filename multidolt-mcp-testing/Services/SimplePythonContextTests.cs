@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
-using DMMS.Services;
+using Embranch.Services;
 using System.Threading.Tasks;
 
-namespace DMMSTesting.Services;
+namespace EmbranchTesting.Services;
 
 /// <summary>
 /// Simple unit tests for the PythonContext class to verify basic functionality

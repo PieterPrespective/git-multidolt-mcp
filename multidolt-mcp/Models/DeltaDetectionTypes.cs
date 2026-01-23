@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Represents a document that has changed and needs synchronization between Dolt and ChromaDB.

@@ -1,6 +1,6 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Interface for handling legacy ChromaDB database version compatibility.

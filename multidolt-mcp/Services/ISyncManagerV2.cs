@@ -1,7 +1,7 @@
-using DMMS.Models;
+using Embranch.Models;
 using System.ComponentModel;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// V2 Interface for bidirectional synchronization between Dolt version control and ChromaDB.

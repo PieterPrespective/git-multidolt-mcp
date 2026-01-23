@@ -2,11 +2,11 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text.Json;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Tools
+namespace Embranch.Tools
 {
     /// <summary>
     /// MCP tool for executing import operations from external ChromaDB databases.

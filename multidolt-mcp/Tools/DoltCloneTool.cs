@@ -2,11 +2,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
 /// MCP tool that clones an existing Dolt repository from a remote
@@ -20,7 +20,7 @@ public class DoltCloneTool
     private readonly ISyncStateTracker _syncStateTracker;
     private readonly string _repositoryPath;
     private readonly DoltConfiguration _doltConfig;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
@@ -32,7 +32,7 @@ public class DoltCloneTool
         ISyncManagerV2 syncManager,
         ISyncStateTracker syncStateTracker,
         IOptions<DoltConfiguration> config,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         ISyncStateChecker syncStateChecker)
     {
         _logger = logger;

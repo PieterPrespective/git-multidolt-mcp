@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 
-namespace DMMSTesting.Services
+namespace EmbranchTesting.Services
 {
     [TestFixture]
     public class DebugPushResultAnalyzerTest
@@ -39,9 +39,9 @@ namespace DMMSTesting.Services
         public void TestFullAnalyzer()
         {
             var output1 = "   abc1234..def5678  main -> main";
-            var commandResult1 = new DMMS.Models.DoltCommandResult(Success: true, Output: output1, Error: "", ExitCode: 0);
+            var commandResult1 = new Embranch.Models.DoltCommandResult(Success: true, Output: output1, Error: "", ExitCode: 0);
             
-            var result1 = DMMS.Services.PushResultAnalyzer.AnalyzePushOutput(commandResult1);
+            var result1 = Embranch.Services.PushResultAnalyzer.AnalyzePushOutput(commandResult1);
             
             Console.WriteLine($"Analyzer result 1 - FromCommit: {result1.FromCommitHash}, ToCommit: {result1.ToCommitHash}");
             Console.WriteLine($"Success: {result1.Success}, Message: {result1.Message}");

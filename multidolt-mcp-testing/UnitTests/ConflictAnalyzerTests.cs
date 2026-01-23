@@ -1,11 +1,11 @@
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Moq;
 using System.Text.Json;
 
-namespace DMMS.Testing.UnitTests
+namespace EmbranchTesting.UnitTests
 {
     /// <summary>
     /// Unit tests for ConflictAnalyzer service

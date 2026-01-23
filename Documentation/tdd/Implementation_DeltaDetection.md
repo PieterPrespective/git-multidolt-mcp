@@ -299,7 +299,7 @@ private bool IsValidTableName(string tableName)
 1. **IDoltCli Interface**: Uses existing Dolt CLI wrapper
 2. **IChromaDbService**: Compatible with existing ChromaDB service
 3. **Logging Infrastructure**: Integrates with Microsoft.Extensions.Logging
-4. **Configuration System**: Uses existing DMMS configuration patterns
+4. **Configuration System**: Uses existing Embranch configuration patterns
 
 ### Extension Points Created
 

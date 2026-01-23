@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
 /// MCP tool that commits the current ChromaDB state to the Dolt repository
@@ -16,7 +16,7 @@ public class DoltCommitTool
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
     private readonly ISyncStateTracker _syncStateTracker;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly ISyncStateChecker _syncStateChecker;
 
     /// <summary>
@@ -27,7 +27,7 @@ public class DoltCommitTool
         IDoltCli doltCli,
         ISyncManagerV2 syncManager,
         ISyncStateTracker syncStateTracker,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         ISyncStateChecker syncStateChecker)
     {
         _logger = logger;

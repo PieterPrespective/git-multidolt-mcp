@@ -1,8 +1,8 @@
 using System.Text.RegularExpressions;
-using DMMS.Models;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Utility for analyzing Dolt push command output to determine actual push results

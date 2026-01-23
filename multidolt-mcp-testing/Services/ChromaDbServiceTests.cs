@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 
-namespace DMMSTesting.Services;
+namespace EmbranchTesting.Services;
 
 /// <summary>
 /// Unit tests for ChromaDbService using mocked IChromaDbService

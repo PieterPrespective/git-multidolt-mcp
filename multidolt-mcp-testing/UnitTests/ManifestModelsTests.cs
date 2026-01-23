@@ -1,8 +1,8 @@
 using NUnit.Framework;
-using DMMS.Models;
+using Embranch.Models;
 using System.Text.Json;
 
-namespace DMMSTesting.UnitTests;
+namespace EmbranchTesting.UnitTests;
 
 /// <summary>
 /// PP13-79: Unit tests for manifest model classes

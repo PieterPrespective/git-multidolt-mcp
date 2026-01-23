@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
 
-namespace DMMSManualTesting;
+namespace EmbranchManualTesting;
 
 /// <summary>
 /// Simplified manual testing class for validating VM RAG operations against a pre-existing DoltHub database.
@@ -13,7 +13,7 @@ namespace DMMSManualTesting;
 public static class VMRAGTestSimple
 {
     private static readonly string DoltExecutablePath = @"C:\Program Files\Dolt\bin\dolt.exe";
-    private static string TestDirectory = Path.Combine(Path.GetTempPath(), "DMMS_VMRAGTestSimple");
+    private static string TestDirectory = Path.Combine(Path.GetTempPath(), "Embranch_VMRAGTestSimple");
     private static string? DatabaseUrl = null;
     private static string? DatabaseName = null;
     private static string? Username = null;

@@ -1,7 +1,7 @@
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Testing.UnitTests;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using EmbranchTesting.UnitTests;
+using Embranch.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,7 +12,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests for branch switching functionality with multi-collection support

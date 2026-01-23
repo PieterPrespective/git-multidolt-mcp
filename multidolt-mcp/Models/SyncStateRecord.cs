@@ -1,6 +1,6 @@
 using System;
 
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Represents a synchronization state record between ChromaDB and Dolt for external tracking

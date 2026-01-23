@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace DMMSTesting.Utilities;
+namespace EmbranchTesting.Utilities;
 
 /// <summary>
 /// Utility functions for test operations

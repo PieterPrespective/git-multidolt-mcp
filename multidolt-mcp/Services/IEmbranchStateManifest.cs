@@ -1,13 +1,13 @@
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
-/// PP13-79: Interface for DMMS state manifest operations.
+/// PP13-79: Interface for Embranch state manifest operations.
 /// Manages reading, writing, and updating the .dmms/state.json file
 /// that tracks Dolt repository state and Git-Dolt commit mappings.
 /// </summary>
-public interface IDmmsStateManifest
+public interface IEmbranchStateManifest
 {
     /// <summary>
     /// Reads the state manifest from the project directory

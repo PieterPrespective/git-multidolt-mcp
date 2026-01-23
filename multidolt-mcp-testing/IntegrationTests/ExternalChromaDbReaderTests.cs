@@ -1,9 +1,9 @@
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
-using DMMS.Services;
+using Embranch.Services;
 using Python.Runtime;
 
-namespace DMMSTesting.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Integration tests for the ExternalChromaDbReader service.

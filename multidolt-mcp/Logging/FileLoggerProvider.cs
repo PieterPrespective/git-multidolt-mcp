@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
-namespace DMMS.Logging;
+namespace Embranch.Logging;
 
 /// <summary>
 /// Logger provider that writes log messages to a file

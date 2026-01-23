@@ -1,8 +1,8 @@
 using System.Text.Json;
-using DMMS.Models;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Service implementation for resolving merge conflicts using various resolution strategies

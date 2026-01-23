@@ -1,7 +1,7 @@
-namespace DMMS.Models;
+namespace Embranch.Models;
 
 /// <summary>
-/// Configuration settings for the DMMS MCP server
+/// Configuration settings for the Embranch MCP server
 /// </summary>
 public class ServerConfiguration
 {
@@ -51,7 +51,7 @@ public class ServerConfiguration
     public string ChromaDataPath { get; set; } = "./chroma_data";
 
     /// <summary>
-    /// General data directory path for DMMS data files (deletion tracking, etc.)
+    /// General data directory path for Embranch data files (deletion tracking, etc.)
     /// </summary>
     public string DataPath { get; set; } = "./data";
 
@@ -60,25 +60,25 @@ public class ServerConfiguration
     /// <summary>
     /// PP13-79: Explicit project root path.
     /// If specified, this path is used instead of auto-detection.
-    /// Environment variable: DMMS_PROJECT_ROOT
+    /// Environment variable: EMBRANCH_PROJECT_ROOT
     /// </summary>
     public string? ProjectRoot { get; set; }
 
     /// <summary>
     /// PP13-79: Whether to automatically detect the project root from Git repository.
-    /// When true, DMMS will search up the directory tree for a Git repository root.
-    /// Environment variable: DMMS_AUTO_DETECT_PROJECT_ROOT
+    /// When true, Embranch will search up the directory tree for a Git repository root.
+    /// Environment variable: EMBRANCH_AUTO_DETECT_PROJECT_ROOT
     /// </summary>
     public bool AutoDetectProjectRoot { get; set; } = true;
 
     /// <summary>
-    /// PP13-79: DMMS initialization mode on startup.
+    /// PP13-79: Embranch initialization mode on startup.
     /// Values: auto, prompt, manual, disabled
     /// - auto: Automatically sync on startup if manifest differs from local state
     /// - prompt: Ask user before syncing on startup (not applicable in MCP context)
     /// - manual: Only sync when explicitly requested via tools
     /// - disabled: Never auto-sync; use local state only
-    /// Environment variable: DMMS_INIT_MODE
+    /// Environment variable: EMBRANCH_INIT_MODE
     /// </summary>
     public string InitMode { get; set; } = "auto";
 }

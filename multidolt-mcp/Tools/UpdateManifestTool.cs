@@ -1,27 +1,27 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
-/// PP13-79: MCP tool to update the DMMS manifest file (.dmms/state.json)
+/// PP13-79: MCP tool to update the Embranch manifest file (.dmms/state.json)
 /// Updates the manifest with current Dolt state and optionally Git mapping
 /// </summary>
 [McpServerToolType]
 public class UpdateManifestTool
 {
     private readonly ILogger<UpdateManifestTool> _logger;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly IDoltCli _doltCli;
     private readonly IGitIntegration _gitIntegration;
 
     public UpdateManifestTool(
         ILogger<UpdateManifestTool> logger,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         IDoltCli doltCli,
         IGitIntegration gitIntegration)
     {
@@ -32,12 +32,12 @@ public class UpdateManifestTool
     }
 
     /// <summary>
-    /// Update the DMMS manifest (.dmms/state.json) with the current Dolt state.
+    /// Update the Embranch manifest (.dmms/state.json) with the current Dolt state.
     /// This records the current Dolt commit and branch in the manifest, and optionally
     /// records the Git-Dolt commit mapping for precise state reconstruction.
     /// </summary>
     [McpServerTool]
-    [Description("Update the DMMS manifest (.dmms/state.json) with the current Dolt state. This records the current Dolt commit and branch, and optionally records the Git-Dolt commit mapping.")]
+    [Description("Update the Embranch manifest (.dmms/state.json) with the current Dolt state. This records the current Dolt commit and branch, and optionally records the Git-Dolt commit mapping.")]
     public virtual async Task<object> UpdateManifest(
         bool? include_git_mapping = true,
         string? note = null,
@@ -148,7 +148,7 @@ public class UpdateManifestTool
             var response = new
             {
                 success = true,
-                message = $"Successfully updated DMMS manifest at {manifestPath}",
+                message = $"Successfully updated Embranch manifest at {manifestPath}",
                 changes = new
                 {
                     previous_commit = existingManifest.Dolt.CurrentCommit?.Substring(0, Math.Min(7, existingManifest.Dolt.CurrentCommit?.Length ?? 0)),

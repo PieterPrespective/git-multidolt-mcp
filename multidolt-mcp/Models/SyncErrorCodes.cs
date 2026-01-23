@@ -1,4 +1,4 @@
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Standardized error codes for sync operations to enable better diagnostics and error handling.

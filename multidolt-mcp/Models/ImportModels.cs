@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 
-namespace DMMS.Models
+namespace Embranch.Models
 {
     #region Filter Models
 

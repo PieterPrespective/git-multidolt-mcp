@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Services;
+using Embranch.Tools;
 
-namespace DMMSTesting.Tools;
+namespace EmbranchTesting.Tools;
 
 /// <summary>
 /// Unit tests for ChromaListCollectionsTool

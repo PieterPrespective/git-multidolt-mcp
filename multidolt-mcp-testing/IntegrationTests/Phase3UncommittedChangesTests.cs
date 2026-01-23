@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 using Moq;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Phase 3 integration tests: Uncommitted Changes Handling during Checkout Operations
@@ -87,8 +87,8 @@ namespace DMMS.Testing.IntegrationTests
                 loggerFactory.CreateLogger<SyncManagerV2>()
             );
 
-            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IEmbranchStateManifest>().Object;
             var syncStateChecker = new Mock<ISyncStateChecker>().Object;
 
             _checkoutTool = new DoltCheckoutTool(

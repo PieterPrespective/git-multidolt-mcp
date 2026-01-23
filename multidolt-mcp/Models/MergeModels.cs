@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Detailed merge conflict information with GUID for tracking

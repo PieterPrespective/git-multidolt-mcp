@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using DMMS.Services;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Testing.UnitTests
+namespace EmbranchTesting.UnitTests
 {
     /// <summary>
     /// Utility for ensuring clean test state isolation in branch switching tests.

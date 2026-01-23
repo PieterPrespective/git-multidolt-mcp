@@ -1,10 +1,10 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.IO.Compression;
 
-namespace DMMSManualTesting;
+namespace EmbranchManualTesting;
 
 /// <summary>
 /// Manual test for the SyncManager implementation that validates end-to-end synchronization
@@ -104,12 +104,12 @@ public class SyncManagerManualTest
     {
         _logger.LogInformation("Setting up test environment...");
         
-        // Find the solution root by looking for DMMS.sln
+        // Find the solution root by looking for Embranch.sln
         var currentDirectory = Directory.GetCurrentDirectory();
         _solutionRoot = currentDirectory;
         
         // Walk up the directory tree to find the solution root
-        while (_solutionRoot != null && !File.Exists(Path.Combine(_solutionRoot, "DMMS.sln")))
+        while (_solutionRoot != null && !File.Exists(Path.Combine(_solutionRoot, "Embranch.sln")))
         {
             var parent = Directory.GetParent(_solutionRoot);
             _solutionRoot = parent?.FullName;
@@ -117,7 +117,7 @@ public class SyncManagerManualTest
         
         if (_solutionRoot == null)
         {
-            throw new DirectoryNotFoundException("Could not find solution root directory containing DMMS.sln");
+            throw new DirectoryNotFoundException("Could not find solution root directory containing Embranch.sln");
         }
         
         _logger.LogInformation("Found solution root at: {SolutionRoot}", _solutionRoot);

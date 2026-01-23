@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
+using Embranch.Models;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// PP13-79-C1: Implementation of sync state checking between local Dolt and manifest.
@@ -13,7 +13,7 @@ public class SyncStateChecker : ISyncStateChecker
     private readonly ILogger<SyncStateChecker> _logger;
     private readonly IDoltCli _doltCli;
     private readonly ISyncManagerV2 _syncManager;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly IGitIntegration _gitIntegration;
     private readonly ServerConfiguration _serverConfig;
 
@@ -29,7 +29,7 @@ public class SyncStateChecker : ISyncStateChecker
         ILogger<SyncStateChecker> logger,
         IDoltCli doltCli,
         ISyncManagerV2 syncManager,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         IGitIntegration gitIntegration,
         IOptions<ServerConfiguration> serverConfig)
     {

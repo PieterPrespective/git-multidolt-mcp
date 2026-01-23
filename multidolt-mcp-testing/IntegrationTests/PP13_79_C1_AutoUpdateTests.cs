@@ -1,11 +1,11 @@
 using NUnit.Framework;
 using Moq;
 using Microsoft.Extensions.Logging;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMSTesting.IntegrationTests;
+namespace EmbranchTesting.IntegrationTests;
 
 /// <summary>
 /// PP13-79-C1: Integration tests for automatic manifest update after Dolt operations.
@@ -15,8 +15,8 @@ namespace DMMSTesting.IntegrationTests;
 public class PP13_79_C1_AutoUpdateTests
 {
     private string _testProjectRoot = null!;
-    private Mock<ILogger<DmmsStateManifest>> _loggerMock = null!;
-    private DmmsStateManifest _manifestService = null!;
+    private Mock<ILogger<EmbranchStateManifest>> _loggerMock = null!;
+    private EmbranchStateManifest _manifestService = null!;
 
     [SetUp]
     public void Setup()
@@ -24,8 +24,8 @@ public class PP13_79_C1_AutoUpdateTests
         _testProjectRoot = Path.Combine(Path.GetTempPath(), $"PP13_79_C1_AutoUpdate_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testProjectRoot);
 
-        _loggerMock = new Mock<ILogger<DmmsStateManifest>>();
-        _manifestService = new DmmsStateManifest(_loggerMock.Object);
+        _loggerMock = new Mock<ILogger<EmbranchStateManifest>>();
+        _manifestService = new EmbranchStateManifest(_loggerMock.Object);
     }
 
     [TearDown]

@@ -1,27 +1,27 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
-/// PP13-79: MCP tool to initialize a DMMS manifest file (.dmms/state.json)
+/// PP13-79: MCP tool to initialize a Embranch manifest file (.dmms/state.json)
 /// Creates the manifest based on current Dolt state for Git-tracked projects
 /// </summary>
 [McpServerToolType]
 public class InitManifestTool
 {
     private readonly ILogger<InitManifestTool> _logger;
-    private readonly IDmmsStateManifest _manifestService;
+    private readonly IEmbranchStateManifest _manifestService;
     private readonly IDoltCli _doltCli;
     private readonly IGitIntegration _gitIntegration;
 
     public InitManifestTool(
         ILogger<InitManifestTool> logger,
-        IDmmsStateManifest manifestService,
+        IEmbranchStateManifest manifestService,
         IDoltCli doltCli,
         IGitIntegration gitIntegration)
     {
@@ -32,12 +32,12 @@ public class InitManifestTool
     }
 
     /// <summary>
-    /// Initialize a DMMS manifest file (.dmms/state.json) in the project root.
+    /// Initialize a Embranch manifest file (.dmms/state.json) in the project root.
     /// This creates a Git-trackable manifest that records the current Dolt state
     /// and enables automatic state synchronization on clone/checkout.
     /// </summary>
     [McpServerTool]
-    [Description("Initialize a DMMS manifest file (.dmms/state.json) in the project root. This creates a Git-trackable manifest that records the current Dolt state and enables automatic state synchronization on clone/checkout.")]
+    [Description("Initialize a Embranch manifest file (.dmms/state.json) in the project root. This creates a Git-trackable manifest that records the current Dolt state and enables automatic state synchronization on clone/checkout.")]
     public virtual async Task<object> InitManifest(
         string? remote_url = null,
         string? default_branch = "main",
@@ -160,7 +160,7 @@ public class InitManifestTool
             return new
             {
                 success = true,
-                message = $"Successfully created DMMS manifest at {manifestPath}",
+                message = $"Successfully created Embranch manifest at {manifestPath}",
                 manifest = new
                 {
                     path = manifestPath,

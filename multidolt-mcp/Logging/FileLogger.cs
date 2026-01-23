@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Logging;
+namespace Embranch.Logging;
 
 /// <summary>
 /// Logger implementation that writes to a file

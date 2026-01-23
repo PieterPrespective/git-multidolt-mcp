@@ -3,11 +3,11 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using CliWrap;
 using CliWrap.Buffered;
-using DMMS.Models;
+using Embranch.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Implementation of Dolt CLI wrapper using CliWrap for process execution

@@ -1,6 +1,6 @@
 using System;
 
-namespace DMMS.Utilities
+namespace Embranch.Utilities
 {
     /// <summary>
     /// Provides methods for safely escaping strings for SQL embedding.

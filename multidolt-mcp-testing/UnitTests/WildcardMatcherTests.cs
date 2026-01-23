@@ -1,7 +1,7 @@
 using NUnit.Framework;
-using DMMS.Utilities;
+using Embranch.Utilities;
 
-namespace DMMS.Testing.UnitTests
+namespace EmbranchTesting.UnitTests
 {
     /// <summary>
     /// Unit tests for WildcardMatcher utility class.

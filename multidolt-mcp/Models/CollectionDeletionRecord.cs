@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace DMMS.Models
+namespace Embranch.Models
 {
     /// <summary>
     /// Represents a collection deletion record for external tracking

@@ -3,10 +3,10 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Reflection;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 
-namespace DMMS.Tools;
+namespace Embranch.Tools;
 
 /// <summary>
 /// MCP tool that provides server version information
@@ -29,11 +29,11 @@ public class GetServerVersionTool
     }
     
     /// <summary>
-    /// Retrieves the current version and configuration of the DMMS MCP Server
+    /// Retrieves the current version and configuration of the Embranch MCP Server
     /// </summary>
     /// <returns>An object containing server version and configuration information</returns>
     [McpServerTool]
-    [Description("Retrieves the current version of the DMMS MCP Server.")]
+    [Description("Retrieves the current version of the Embranch MCP Server.")]
     public virtual Task<object> GetServerVersion()
     {
         const string toolName = nameof(GetServerVersionTool);
@@ -61,7 +61,7 @@ public class GetServerVersionTool
                     assemblyVersion,
                     fileVersion,
                     loggingEnabled,
-                    serverType = "DMMS - Dolt Multi-Database MCP Server",
+                    serverType = "Embranch MCP Server",
                     mcpPort = _config.McpPort,
                     connectionTimeout = _config.ConnectionTimeoutSeconds,
                     bufferSize = _config.BufferSize,

@@ -29,7 +29,7 @@
               }, {
                 "files": ["codecoverage-web/**"]
               }], "dest": "_site", "globalMetadata": {
-                "_appTitle": "Dolt Multi-Database MCP Server Documentation", "_appFooter": "Copyright © DMMS Team",
+                "_appTitle": "Embranch MCP Server Documentation", "_appFooter": "Copyright © Embranch Team",
                 "_enableSearch": true
               }, "template": ["default", "modern"], "postProcessors": ["ExtractSearchIndex"],
               "markdownEngineName": "markdig", "markdownEngineProperties": {

@@ -3,10 +3,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Reflection;
-using DMMS.Logging;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Logging;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -15,7 +15,7 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 {
     try
     {
-        var logFileName = Environment.GetEnvironmentVariable("LOG_FILE_NAME") ?? "DMMS_crash.log";
+        var logFileName = Environment.GetEnvironmentVariable("LOG_FILE_NAME") ?? "Embranch_crash.log";
         var crashLog = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] UNHANDLED EXCEPTION: {e.ExceptionObject}\n";
         File.AppendAllText(logFileName, crashLog);
     }
@@ -105,8 +105,8 @@ builder.Services.AddSingleton<ILegacyDbMigrator, LegacyDbMigrator>();
 
 // PP13-79: Register Git integration and manifest services
 builder.Services.AddSingleton<IGitIntegration, GitIntegration>();
-builder.Services.AddSingleton<IDmmsStateManifest, DmmsStateManifest>();
-builder.Services.AddSingleton<IDmmsInitializer, DmmsInitializer>();
+builder.Services.AddSingleton<IEmbranchStateManifest, EmbranchStateManifest>();
+builder.Services.AddSingleton<IEmbranchInitializer, EmbranchInitializer>();
 
 // PP13-79-C1: Register sync state checker for manifest synchronization
 builder.Services.AddSingleton<ISyncStateChecker, SyncStateChecker>();
@@ -340,20 +340,20 @@ catch (Exception ex)
     Environment.Exit(3);
 }
 
-// PP13-79: Manifest-based DMMS state initialization
+// PP13-79: Manifest-based Embranch state initialization
 if (doltConfig.UseManifest)
 {
     try
     {
-        var manifestService = host.Services.GetRequiredService<IDmmsStateManifest>();
-        var initializer = host.Services.GetRequiredService<IDmmsInitializer>();
+        var manifestService = host.Services.GetRequiredService<IEmbranchStateManifest>();
+        var initializer = host.Services.GetRequiredService<IEmbranchInitializer>();
         var gitService = host.Services.GetRequiredService<IGitIntegration>();
         var syncStateChecker = host.Services.GetRequiredService<ISyncStateChecker>();
 
         if (enableLogging)
         {
             var logger = host.Services.GetService<ILogger<Program>>();
-            logger?.LogInformation("PP13-79: Checking for DMMS manifest...");
+            logger?.LogInformation("PP13-79: Checking for Embranch manifest...");
         }
 
         // Detect project root
@@ -380,7 +380,7 @@ if (doltConfig.UseManifest)
             // Check if initialization is needed based on mode
             var initMode = serverConfig.InitMode.ToLowerInvariant();
 
-            if (initMode == "auto" || initMode == DMMS.Models.InitializationMode.Auto)
+            if (initMode == "auto" || initMode == Embranch.Models.InitializationMode.Auto)
             {
                 var check = await initializer.CheckInitializationNeededAsync(manifest);
 
@@ -468,7 +468,7 @@ if (doltConfig.UseManifest)
                     }
                 }
             }
-            else if (initMode == "manual" || initMode == DMMS.Models.InitializationMode.Manual)
+            else if (initMode == "manual" || initMode == Embranch.Models.InitializationMode.Manual)
             {
                 if (enableLogging)
                 {
@@ -476,7 +476,7 @@ if (doltConfig.UseManifest)
                     logger?.LogInformation("PP13-79: Init mode is 'manual' - skipping automatic initialization. Use sync_to_manifest tool to sync.");
                 }
             }
-            else if (initMode == "disabled" || initMode == DMMS.Models.InitializationMode.Disabled)
+            else if (initMode == "disabled" || initMode == Embranch.Models.InitializationMode.Disabled)
             {
                 if (enableLogging)
                 {
@@ -520,7 +520,7 @@ if (doltConfig.UseManifest)
             // Now proceed with initialization using the newly created manifest
             var initMode = serverConfig.InitMode.ToLowerInvariant();
 
-            if (initMode == "auto" || initMode == DMMS.Models.InitializationMode.Auto)
+            if (initMode == "auto" || initMode == Embranch.Models.InitializationMode.Auto)
             {
                 var check = await initializer.CheckInitializationNeededAsync(manifest);
 
@@ -589,7 +589,7 @@ if (enableLogging)
     
     var version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
     
-    logger.LogInformation("DMMS (Dolt Multi-Database MCP Server) v{Version} starting up", version);
+    logger.LogInformation("Embranch MCP Server v{Version} starting up", version);
     logger.LogInformation("This server provides MCP access to multiple Dolt databases via terminal commands");
     logger.LogInformation("✓ All services initialized successfully");
 }
@@ -627,12 +627,12 @@ public static class ConfigurationUtility
         options.ChromaPort = int.TryParse(Environment.GetEnvironmentVariable("CHROMA_PORT"), out var chromaPort) ? chromaPort : 8000;
         options.ChromaMode = Environment.GetEnvironmentVariable("CHROMA_MODE") ?? "persistent";
         options.ChromaDataPath = Environment.GetEnvironmentVariable("CHROMA_DATA_PATH") ?? "./chroma_data";
-        options.DataPath = Environment.GetEnvironmentVariable("DMMS_DATA_PATH") ?? "./data";
+        options.DataPath = Environment.GetEnvironmentVariable("EMBRANCH_DATA_PATH") ?? "./data";
 
         // PP13-79: Project root detection settings
-        options.ProjectRoot = Environment.GetEnvironmentVariable("DMMS_PROJECT_ROOT");
-        options.AutoDetectProjectRoot = !bool.TryParse(Environment.GetEnvironmentVariable("DMMS_AUTO_DETECT_PROJECT_ROOT"), out var autoDetect) || autoDetect;
-        options.InitMode = Environment.GetEnvironmentVariable("DMMS_INIT_MODE") ?? "auto";
+        options.ProjectRoot = Environment.GetEnvironmentVariable("EMBRANCH_PROJECT_ROOT");
+        options.AutoDetectProjectRoot = !bool.TryParse(Environment.GetEnvironmentVariable("EMBRANCH_AUTO_DETECT_PROJECT_ROOT"), out var autoDetect) || autoDetect;
+        options.InitMode = Environment.GetEnvironmentVariable("EMBRANCH_INIT_MODE") ?? "auto";
 
         return options;
     }
@@ -657,7 +657,7 @@ public static class ConfigurationUtility
 
         // PP13-79-C1: Manifest is the single source of truth for Dolt targeting
         // DOLT_REMOTE_URL is only used for initial manifest creation when no manifest exists
-        options.UseManifest = !bool.TryParse(Environment.GetEnvironmentVariable("DMMS_USE_MANIFEST"), out var useManifest) || useManifest;
+        options.UseManifest = !bool.TryParse(Environment.GetEnvironmentVariable("EMBRANCH_USE_MANIFEST"), out var useManifest) || useManifest;
 
         return options;
     }

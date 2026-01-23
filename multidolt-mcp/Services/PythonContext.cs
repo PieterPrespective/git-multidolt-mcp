@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Python.Runtime;
 
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// Static context manager for all Python operations, ensuring thread-safe execution on a dedicated thread

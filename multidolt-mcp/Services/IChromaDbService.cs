@@ -1,4 +1,4 @@
-namespace DMMS.Services;
+namespace Embranch.Services;
 
 /// <summary>
 /// Interface for ChromaDB service operations

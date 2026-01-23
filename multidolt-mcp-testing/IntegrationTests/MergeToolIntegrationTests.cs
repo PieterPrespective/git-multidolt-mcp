@@ -2,13 +2,13 @@ using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using DMMS.Models;
-using DMMS.Services;
-using DMMS.Tools;
+using Embranch.Models;
+using Embranch.Services;
+using Embranch.Tools;
 using System.Text.Json;
 using Moq;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Comprehensive integration tests for DoltMerge MCP tools
@@ -90,8 +90,8 @@ namespace DMMS.Testing.IntegrationTests
             _conflictAnalyzer = new ConflictAnalyzer(_doltCli, conflictAnalyzerLogger);
             _conflictResolver = new MergeConflictResolver(_doltCli, conflictResolverLogger);
 
-            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IEmbranchStateManifest>().Object;
             var syncStateChecker = new Mock<ISyncStateChecker>().Object;
 
             _previewTool = new PreviewDoltMergeTool(previewToolLogger, _doltCli, _conflictAnalyzer, _syncManager);

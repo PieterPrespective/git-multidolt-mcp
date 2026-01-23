@@ -12,7 +12,7 @@ The VM RAG MCP Server is a Model Context Protocol server that provides tools for
 
 ## What is MCP?
 
-The Model Context Protocol (MCP) is a standard that allows AI assistants like Claude to interact with external tools and services. DMMS implements this protocol to give Claude access to Dolt database functionality.
+The Model Context Protocol (MCP) is a standard that allows AI assistants like Claude to interact with external tools and services. Embranch implements this protocol to give Claude access to Dolt database functionality.
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ Follow these steps to get the VM RAG MCP Server up and running:
 2. **Install VM RAG MCP Server**
    - Download the latest release
    - Extract to a folder (e.g., `C:\Program Files\VM-RAG-MCP`)
-   - Note the path to `DMMS.exe`
+   - Note the path to `Embranch.exe`
 
 3. **Configure Claude Desktop**
    - Edit `%APPDATA%\Claude\claude_desktop_config.json`
@@ -36,7 +36,7 @@ Follow these steps to get the VM RAG MCP Server up and running:
    {
      "mcpServers": {
        "vm-rag": {
-         "command": "C:\\Program Files\\VM-RAG-MCP\\DMMS.exe",
+         "command": "C:\\Program Files\\VM-RAG-MCP\\Embranch.exe",
          "env": {
            "CHROMA_DATA_PATH": "./data/chroma_data",
            "DOLT_REPOSITORY_PATH": "./data/dolt-repo"

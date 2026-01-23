@@ -1,10 +1,10 @@
-using DMMS.Models;
-using DMMS.Services;
+using Embranch.Models;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 using System.IO;
 
-namespace DMMSTesting.UnitTests;
+namespace EmbranchTesting.UnitTests;
 
 /// <summary>
 /// Unit tests for the LegacyDbMigrator service.

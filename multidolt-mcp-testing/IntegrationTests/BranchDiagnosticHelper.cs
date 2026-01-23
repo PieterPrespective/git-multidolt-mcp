@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using DMMS.Services;
+using Embranch.Services;
 using Microsoft.Extensions.Logging;
 
-namespace DMMS.Testing.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// Helper class to diagnose branch state issues

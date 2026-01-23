@@ -1,13 +1,13 @@
 using System;
 using System.Threading.Tasks;
 
-namespace DMMSManualTesting;
+namespace EmbranchManualTesting;
 
 public class Program
 {
     public static async Task Main(string[] args)
     {
-        Console.WriteLine("DMMS Testing Console");
+        Console.WriteLine("Embranch Testing Console");
         Console.WriteLine("===================");
         Console.WriteLine();
         Console.WriteLine("Available tests:");

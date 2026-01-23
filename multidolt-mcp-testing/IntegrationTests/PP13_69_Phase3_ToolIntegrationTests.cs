@@ -1,9 +1,9 @@
 using NUnit.Framework;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using DMMS.Services;
-using DMMS.Models;
-using DMMS.Tools;
+using Embranch.Services;
+using Embranch.Models;
+using Embranch.Tools;
 using System.IO;
 using System.Threading.Tasks;
 using System;
@@ -11,7 +11,7 @@ using System.Linq;
 using System.Collections.Generic;
 using Moq;
 
-namespace DMMSTesting.IntegrationTests
+namespace EmbranchTesting.IntegrationTests
 {
     /// <summary>
     /// PP13-69 Phase 3: Tool Updates Integration Tests
@@ -94,8 +94,8 @@ namespace DMMSTesting.IntegrationTests
                 _loggerFactory.CreateLogger<SyncManagerV2>()
             );
 
-            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-            var manifestService = new Mock<IDmmsStateManifest>().Object;
+            // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+            var manifestService = new Mock<IEmbranchStateManifest>().Object;
             var syncStateChecker = new Mock<ISyncStateChecker>().Object;
 
             // Create tool instances with PP13-69 Phase 3 dependencies
@@ -273,8 +273,8 @@ namespace DMMSTesting.IntegrationTests
                 _loggerFactory.CreateLogger<SyncManagerV2>()
             );
 
-            // Create mocks for IDmmsStateManifest and ISyncStateChecker (PP13-79)
-            var manifestServiceForCommit = new Mock<IDmmsStateManifest>().Object;
+            // Create mocks for IEmbranchStateManifest and ISyncStateChecker (PP13-79)
+            var manifestServiceForCommit = new Mock<IEmbranchStateManifest>().Object;
             var syncStateCheckerForCommit = new Mock<ISyncStateChecker>().Object;
 
             _commitTool = new DoltCommitTool(

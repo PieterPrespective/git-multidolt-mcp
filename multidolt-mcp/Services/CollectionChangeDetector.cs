@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using DMMS.Models;
-using DMMS.Utilities;
+using Embranch.Models;
+using Embranch.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace DMMS.Services
+namespace Embranch.Services
 {
     /// <summary>
     /// Detects changes in collection-level operations that need to be synchronized between ChromaDB and Dolt.

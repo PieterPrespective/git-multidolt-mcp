@@ -155,17 +155,17 @@ Claude Code automatically detects `.mcp.json` in your project root when you star
 <details>
 <summary><strong>Auto-initialization from Remote (Optional)</strong></summary>
 
-To automatically clone and sync from a DoltHub repository on startup, add these environment variables to either configuration:
+To automatically initialize with a DoltHub repository on first startup, set the `DOLT_REMOTE_URL` environment variable:
 
 ```json
 {
   "env": {
-    "DOLT_REMOTE_URL": "your-org/your-database",
-    "EMBRANCH_TARGET_BRANCH": "main",
-    "EMBRANCH_TARGET_COMMIT": "commit-hash-here"
+    "DOLT_REMOTE_URL": "your-org/your-database"
   }
 }
 ```
+
+This creates a manifest file (`.embranch/state.json`) that tracks the remote URL. For reproducible environments with specific branch/commit targets, use the `init_manifest` tool or edit the manifest file directly.
 
 This is useful for:
 - Setting up reproducible environments for team members
@@ -293,9 +293,10 @@ Embranch provides 34 MCP tools organized into categories:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DOLT_EXECUTABLE_PATH` | Path to Dolt executable | `dolt` (from PATH) |
-| `DOLT_REMOTE_URL` | DoltHub remote URL (e.g., `org/database`) | - |
-| `EMBRANCH_TARGET_BRANCH` | Target branch for auto-initialization | `main` |
-| `EMBRANCH_TARGET_COMMIT` | Target commit hash for auto-initialization | - |
+| `DOLT_REPOSITORY_PATH` | Path to Dolt repository | `./data/dolt-repo` |
+| `DOLT_REMOTE_URL` | DoltHub remote URL for initial manifest creation | - |
+| `DOLT_REMOTE_NAME` | Name for the remote | `origin` |
+| `DOLT_COMMAND_TIMEOUT` | Command timeout in milliseconds | `30000` |
 
 #### Logging Configuration
 

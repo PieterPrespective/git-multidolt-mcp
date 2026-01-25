@@ -1,16 +1,16 @@
-# VMRAG - Version Managed Retrieval Augmented Generation
+# Embranch - Version Controlled RAG for AI Agents
 
-**VMRAG** is a Model Context Protocol (MCP) server that brings **Git-like version control** to your RAG (Retrieval Augmented Generation) data. It combines **ChromaDB** for semantic vector search with **Dolt** for version control, enabling teams to collaborate on knowledge bases with full branching, merging, and history tracking.
+**Embranch** is a Model Context Protocol (MCP) server that brings **Git-like version control** to your RAG (Retrieval Augmented Generation) data. It combines **ChromaDB** for semantic vector search with **Dolt** for version control, enabling teams to collaborate on knowledge bases with full branching, merging, and history tracking.
 
 ## Overview
 
-VMRAG creates a bidirectional sync between:
+Embranch creates a bidirectional sync between:
 - **ChromaDB** - Your working copy for semantic search and document operations
 - **Dolt** - Your version control system for branching, commits, and team collaboration
 
 ```
                     ┌─────────────────────────────────────────────────┐
-                    │              VMRAG MCP Server                    │
+                    │             Embranch MCP Server                 │
                     ├─────────────────────────────────────────────────┤
                     │   ┌──────────────────┐  ┌──────────────────┐   │
                     │   │   ChromaDB       │  │     Dolt CLI     │   │
@@ -41,28 +41,54 @@ Think of it like **Git for your AI knowledge base**:
 
 ## Prerequisites
 
-- **.NET 9.0 SDK** or later
 - **Dolt** installed and in PATH ([installation guide](https://docs.dolthub.com/introduction/installation))
 - **Python 3.10+** with ChromaDB (for vector operations)
 
 ## Installation
 
-### 1. Clone the repository
+### Download Release (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/PieterPrespective/VMRAG/releases/latest):
+
+| Platform | Download |
+|----------|----------|
+| Windows x64 | `embranch-win-x64.zip` |
+| Linux x64 | `embranch-linux-x64.zip` |
+| macOS Intel | `embranch-osx-x64.zip` |
+| macOS Apple Silicon | `embranch-osx-arm64.zip` |
+
+Extract to a folder of your choice (e.g., `C:\Tools\Embranch` or `~/tools/embranch`).
+
+<details>
+<summary><strong>Development Install (Build from Source)</strong></summary>
+
+If you want to contribute or run the latest development version:
+
+#### 1. Prerequisites
+- **.NET 9.0 SDK** or later
+
+#### 2. Clone the repository
 
 ```bash
-git clone https://github.com/your-org/vmrag.git
-cd vmrag
+git clone https://github.com/PieterPrespective/VMRAG.git
+cd VMRAG
 ```
 
-### 2. Build the project
+#### 3. Build the project
 
 ```bash
-dotnet build multidolt-mcp/multidolt-mcp.csproj
+dotnet build Embranch/Embranch.csproj
 ```
 
-### 3. Configure Your MCP Client
+#### 4. Run with dotnet
 
-VMRAG works with any MCP-compatible client. Below are setup instructions for the most common clients.
+Use `dotnet run --project Embranch/Embranch.csproj` instead of the executable in your MCP configuration.
+
+</details>
+
+### Configure Your MCP Client
+
+Embranch works with any MCP-compatible client. Below are setup instructions for the most common clients.
 
 <details>
 <summary><strong>Claude Desktop</strong></summary>
@@ -75,26 +101,25 @@ Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "vmrag": {
-      "command": "dotnet",
-      "args": ["run", "--project", "C:/path/to/vmrag/multidolt-mcp/multidolt-mcp.csproj"],
+    "embranch": {
+      "command": "C:/Tools/Embranch/Embranch.exe",
       "env": {
         "CHROMA_DATA_PATH": "./data/chroma",
         "DOLT_REPOSITORY_PATH": "./data/dolt-repo",
         "DOLT_EXECUTABLE_PATH": "C:\\Program Files\\Dolt\\bin\\dolt.exe",
-        "DMMS_DATA_PATH": "./data",
-        "DMMS_PROJECT_ROOT": "./data",
+        "EMBRANCH_DATA_PATH": "./data",
+        "EMBRANCH_PROJECT_ROOT": "./data",
         "ENABLE_LOGGING": "True",
         "LOG_LEVEL": "Debug",
-        "LOG_FILE_NAME": "./logs/vmrag.log"
+        "LOG_FILE_NAME": "./logs/embranch.log"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop after saving the configuration. 
-(In windows, you'll need to explicitly quit it via right-clicking the system tray icon)
+Restart Claude Desktop after saving the configuration.
+(On Windows, you'll need to explicitly quit it via right-clicking the system tray icon)
 
 </details>
 
@@ -106,34 +131,17 @@ Create a `.mcp.json` file in your project root:
 ```json
 {
   "mcpServers": {
-    "vmrag": {
-      "command": "./VMRAG/VMRAG.exe",
+    "embranch": {
+      "command": "C:/Tools/Embranch/Embranch.exe",
       "env": {
         "CHROMA_DATA_PATH": "./data/chroma",
         "DOLT_REPOSITORY_PATH": "./data/dolt-repo",
         "DOLT_EXECUTABLE_PATH": "C:\\Program Files\\Dolt\\bin\\dolt.exe",
-        "DMMS_DATA_PATH": "./data",
-        "DMMS_PROJECT_ROOT": "./data",
+        "EMBRANCH_DATA_PATH": "./data",
+        "EMBRANCH_PROJECT_ROOT": "./data",
         "ENABLE_LOGGING": "True",
         "LOG_LEVEL": "Debug",
-        "LOG_FILE_NAME": "./logs/vmrag.log"
-      }
-    }
-  }
-}
-```
-
-Alternatively, use `dotnet run`:
-
-```json
-{
-  "mcpServers": {
-    "vmrag": {
-      "command": "dotnet",
-      "args": ["run", "--project", "./path/to/vmrag/multidolt-mcp/multidolt-mcp.csproj"],
-      "env": {
-        "CHROMA_DATA_PATH": "./data/chroma",
-        "DOLT_REPOSITORY_PATH": "./data/dolt-repo"
+        "LOG_FILE_NAME": "./logs/embranch.log"
       }
     }
   }
@@ -153,8 +161,8 @@ To automatically clone and sync from a DoltHub repository on startup, add these 
 {
   "env": {
     "DOLT_REMOTE_URL": "your-org/your-database",
-    "DMMS_TARGET_BRANCH": "main",
-    "DMMS_TARGET_COMMIT": "commit-hash-here"
+    "EMBRANCH_TARGET_BRANCH": "main",
+    "EMBRANCH_TARGET_COMMIT": "commit-hash-here"
   }
 }
 ```
@@ -181,7 +189,7 @@ Once configured, you can use natural language with Claude:
 
 ## Available Tools
 
-VMRAG provides 34 MCP tools organized into categories:
+Embranch provides 34 MCP tools organized into categories:
 
 ### ChromaDB Collection Management
 
@@ -256,10 +264,10 @@ VMRAG provides 34 MCP tools organized into categories:
 
 | Tool | Description |
 |------|-------------|
-| `get_server_version` | Get VMRAG server version information |
+| `get_server_version` | Get Embranch server version information |
 | `diagnostics` | Run diagnostic checks on the system |
 
-### Manifest Management (PP13-79)
+### Manifest Management
 
 | Tool | Description |
 |------|-------------|
@@ -277,8 +285,8 @@ VMRAG provides 34 MCP tools organized into categories:
 |----------|-------------|---------|
 | `CHROMA_DATA_PATH` | Path for ChromaDB persistent storage | `./data/chroma` |
 | `DOLT_REPOSITORY_PATH` | Path for Dolt repository | `./data/dolt-repo` |
-| `DMMS_DATA_PATH` | Base data path for VMRAG | `./data` |
-| `DMMS_PROJECT_ROOT` | Project root for manifest and state files | `./data` |
+| `EMBRANCH_DATA_PATH` | Base data path for Embranch | `./data` |
+| `EMBRANCH_PROJECT_ROOT` | Project root for manifest and state files | `./data` |
 
 #### Dolt Configuration
 
@@ -286,8 +294,8 @@ VMRAG provides 34 MCP tools organized into categories:
 |----------|-------------|---------|
 | `DOLT_EXECUTABLE_PATH` | Path to Dolt executable | `dolt` (from PATH) |
 | `DOLT_REMOTE_URL` | DoltHub remote URL (e.g., `org/database`) | - |
-| `DMMS_TARGET_BRANCH` | Target branch for auto-initialization | `main` |
-| `DMMS_TARGET_COMMIT` | Target commit hash for auto-initialization | - |
+| `EMBRANCH_TARGET_BRANCH` | Target branch for auto-initialization | `main` |
+| `EMBRANCH_TARGET_COMMIT` | Target commit hash for auto-initialization | - |
 
 #### Logging Configuration
 
@@ -295,7 +303,7 @@ VMRAG provides 34 MCP tools organized into categories:
 |----------|-------------|---------|
 | `ENABLE_LOGGING` | Enable detailed logging (`True`/`False`) | `False` |
 | `LOG_LEVEL` | Logging verbosity (Debug/Info/Warning/Error) | `Information` |
-| `LOG_FILE_NAME` | Path to log file | `./logs/vmrag.log` |
+| `LOG_FILE_NAME` | Path to log file | `./logs/embranch.log` |
 
 ## Setting Up DoltHub Remote
 
@@ -358,7 +366,7 @@ dolt remote add origin your-username/database-name
 dolt push -u origin main
 ```
 
-### 5. Configure VMRAG to Use Your Remote
+### 5. Configure Embranch to Use Your Remote
 
 Set the `DOLT_REMOTE_URL` environment variable in your MCP configuration:
 
@@ -385,7 +393,7 @@ To collaborate with others:
 
 ## Architecture
 
-VMRAG uses a **bidirectional sync model**:
+Embranch uses a **bidirectional sync model**:
 
 1. **Chroma to Dolt**: Before `commit` - stages local ChromaDB changes to Dolt
 2. **Dolt to Chroma**: After `pull`, `checkout`, `merge`, `reset` - updates ChromaDB from Dolt
@@ -460,9 +468,9 @@ User Workflow:
 - Use `preview_dolt_merge` first to see conflicts
 - Provide `conflict_resolutions` JSON to `execute_dolt_merge`
 
-## 🚀 Project Status: Active Side Project
+## Project Status: Active Side Project
 
-VMRAG is maintained as a passion project. Here's what that means for you:
+Embranch is maintained as a passion project. Here's what that means for you:
 
 | Expectation | Reality |
 |-------------|---------|
@@ -473,11 +481,11 @@ VMRAG is maintained as a passion project. Here's what that means for you:
 
 ### How You Can Help
 
-- ⭐ **Star the repo** - Helps others discover the project
-- 🐛 **Report bugs** - Detailed reports help me fix things faster
-- 📖 **Improve docs** - PRs for documentation are always welcome
-- 💬 **Answer questions** - Help others in Discussions
-- 🔧 **Contribute code** - See CONTRIBUTING.md
+- **Star the repo** - Helps others discover the project
+- **Report bugs** - Detailed reports help me fix things faster
+- **Improve docs** - PRs for documentation are always welcome
+- **Answer questions** - Help others in Discussions
+- **Contribute code** - See CONTRIBUTING.md
 
 ### Need More?
 
